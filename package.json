@@ -1,0 +1,26 @@
+{
+  "name": "budget-app",
+  "version": "1.0.0",
+  "description": "Local budget app with YNAB-style allocation",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "budget",
+    "ynab",
+    "electron"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^25.0.0"
+  },
+  "dependencies": {
+    "googleapis": "^118.0.0",
+    "nedb": "^1.8.0",
+    "sortablejs": "^1.15.7",
+    "sweetalert2": "^11.26.24"
+  }
+}

@@ -1,0 +1,33 @@
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Electron/package output
+dist/
+build/
+out/
+release/
+
+# Local app data
+data/
+*.db
+
+# Coverage
+coverage/
+
+# Misc
+*.log

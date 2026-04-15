@@ -1,0 +1,1672 @@
+// renderer.js
+const CacheService = require('./services/CacheService');
+const Sortable = require('sortablejs');
+const Swal = require('sweetalert2');
+const Account = require('./models/Account');
+const Category = require('./models/Category');
+const SubCategory = require('./models/SubCategory');
+const Transaction = require('./models/Transaction');
+const BudgetAllocation = require('./models/BudgetAllocation');
+
+const cache = new CacheService();
+let editingAccountId = null;
+let categoryFormMode = 'create-category';
+let statusToastTimeoutId = null;
+let accountsSortable = null;
+let categoriesSortable = null;
+let subCategorySortables = [];
+let editingTransactionId = null;
+let transactionSubCategoriesCache = [];
+const sectionCopy = {
+  accounts: {
+    title: 'Accounts Overview',
+    subtitle: 'Track the cash you have available right now.'
+  },
+  categories: {
+    title: 'Category Planning',
+    subtitle: 'Organize spending into clear groups and goals.'
+  },
+  transactions: {
+    title: 'Transaction Activity',
+    subtitle: 'Review inflows, outflows, and the story behind your money.'
+  },
+  budget: {
+    title: 'Monthly Budget',
+    subtitle: 'Assign every dollar with confidence before the month gets busy.'
+  }
+};
+
+function showSection(sectionId) {
+  document.querySelectorAll('.section').forEach(section => {
+    section.classList.remove('active');
+  });
+  document.querySelectorAll('.nav-button').forEach(button => {
+    button.classList.toggle('active', button.dataset.section === sectionId);
+  });
+  document.getElementById(sectionId).classList.add('active');
+  updateSectionHeader(sectionId);
+  loadSectionData(sectionId);
+}
+
+async function loadSectionData(sectionId) {
+  switch (sectionId) {
+    case 'accounts':
+      await loadAccounts();
+      break;
+    case 'categories':
+      await loadCategories();
+      break;
+    case 'transactions':
+      await loadTransactions();
+      break;
+    case 'budget':
+      await loadBudgetView();
+      break;
+  }
+}
+
+async function loadAccounts() {
+  const accounts = sortItemsForDisplay(await cache.getAll('accounts'));
+  const list = document.getElementById('accounts-list');
+  if (!accounts.length) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <h4>No accounts yet</h4>
+        <p>Add your checking, savings, cash, or credit card accounts to see your cash position here.</p>
+      </div>
+    `;
+    updateDashboardStats(accounts, null);
+    return;
+  }
+
+  list.innerHTML = accounts.map(acc => {
+    const currentBalance = formatCurrency(acc.currentBalance);
+    const startingBalance = formatCurrency(acc.startingBalance);
+    const budgetStatus = acc.offBudget ? 'Off Budget' : 'On Budget';
+    const amountClass = acc.currentBalance >= 0 ? 'positive' : 'negative';
+    const descriptionMarkup = acc.description
+      ? `<p class="data-card-note">${escapeHtml(acc.description)}</p>`
+      : '';
+
+    return `
+      <article class="data-card sortable-card" data-item-id="${acc.id}">
+        <div class="data-card-header">
+          <div class="data-card-title-group">
+            <div class="drag-handle" aria-hidden="true" title="Drag to reorder">
+              ${getActionIcon('drag')}
+            </div>
+            <div>
+            <h4>${escapeHtml(acc.name)}</h4>
+            ${descriptionMarkup}
+            </div>
+          </div>
+          <div class="pill ${acc.offBudget ? 'warn' : ''}">${budgetStatus}</div>
+        </div>
+        <div class="data-card-footer">
+          <p>Started with ${startingBalance}</p>
+          <div class="amount ${amountClass}">${currentBalance}</div>
+        </div>
+        <div class="card-actions">
+          <button type="button" class="icon-button" onclick="editAccount('${acc.id}')" aria-label="Edit account" title="Edit account">
+            ${getActionIcon('edit')}
+          </button>
+          <button type="button" class="icon-button danger" onclick="confirmDeleteAccount('${acc.id}')" aria-label="Delete account" title="Delete account">
+            ${getActionIcon('trash')}
+          </button>
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  initializeAccountsSortable();
+  updateDashboardStats(accounts, null);
+}
+
+async function loadCategories() {
+  const [rawCategories, subCategories] = await Promise.all([
+    cache.getAll('categories'),
+    cache.getAll('subCategories')
+  ]);
+  const categories = sortItemsForDisplay(rawCategories);
+  const list = document.getElementById('categories-list');
+  if (!categories.length) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <h4>No categories yet</h4>
+        <p>Create a category group and optionally add its first subcategory so your budget has structure right away.</p>
+      </div>
+    `;
+    updateDashboardStats(null, categories, subCategories);
+    return;
+  }
+
+  list.innerHTML = categories.map(cat => {
+    const categorySubCategories = sortItemsForDisplay(
+      subCategories.filter(subCategory => subCategory.categoryId === cat.id)
+    );
+    const categoryStatus = cat.offBudget ? 'Off Budget' : 'On Budget';
+    const subCategoryCount = `${categorySubCategories.length} ${categorySubCategories.length === 1 ? 'subcategory' : 'subcategories'}`;
+    const noteMarkup = cat.note
+      ? `<p class="data-card-note">${escapeHtml(cat.note)}</p>`
+      : '';
+    const subCategoryMarkup = categorySubCategories.length
+      ? `<div class="sub-list" data-category-id="${cat.id}">${categorySubCategories.map(subCategory => `
+          <div class="sub-item sortable-sub-item" data-item-id="${subCategory.id}">
+            <div class="data-card-title-group">
+              <div class="drag-handle" aria-hidden="true" title="Drag to reorder">
+                ${getActionIcon('drag')}
+              </div>
+              <div>
+              <strong>${escapeHtml(subCategory.name)}</strong>
+              <p>${escapeHtml(getSubCategoryMeta(subCategory))}</p>
+              </div>
+            </div>
+            <div class="sub-item-actions">
+              <div class="pill ${subCategory.offBudget ? 'warn' : ''}">${getGoalLabel(subCategory.goalType, subCategory.goalAmount)}</div>
+              <div class="icon-actions">
+                <button type="button" class="icon-button" onclick="editSubCategory('${subCategory.id}')" aria-label="Edit subcategory" title="Edit subcategory">
+                  ${getActionIcon('edit')}
+                </button>
+                <button type="button" class="icon-button danger" onclick="confirmDeleteSubCategory('${subCategory.id}')" aria-label="Delete subcategory" title="Delete subcategory">
+                  ${getActionIcon('trash')}
+                </button>
+              </div>
+            </div>
+          </div>
+        `).join('')}</div>`
+      : '<p class="empty-state">No subcategories yet. Add one from the form to start budgeting within this group.</p>';
+
+    return `
+      <article class="data-card category-card sortable-card" data-item-id="${cat.id}">
+        <div class="data-card-header">
+          <div class="data-card-copy">
+            <div class="data-card-title-group">
+              <div class="drag-handle" aria-hidden="true" title="Drag to reorder">
+                ${getActionIcon('drag')}
+              </div>
+              <div>
+                <h4>${escapeHtml(cat.name)}</h4>
+                ${noteMarkup}
+              </div>
+            </div>
+          </div>
+          <div class="card-header-actions">
+            <div class="pill ${cat.offBudget ? 'warn' : ''}">${categoryStatus}</div>
+            <div class="icon-actions">
+              <button type="button" class="secondary-button compact-button" onclick="startAddSubCategory('${cat.id}')">+ Subcategory</button>
+              <button type="button" class="icon-button" onclick="editCategory('${cat.id}')" aria-label="Edit category" title="Edit category">
+                ${getActionIcon('edit')}
+              </button>
+              <button type="button" class="icon-button danger" onclick="confirmDeleteCategory('${cat.id}')" aria-label="Delete category" title="Delete category">
+                ${getActionIcon('trash')}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="data-card-footer">
+          <p>${subCategoryCount}</p>
+          <p>${categorySubCategories.filter(subCategory => !subCategory.offBudget).length} on-budget</p>
+        </div>
+        ${subCategoryMarkup}
+      </article>
+    `;
+  }).join('');
+
+  initializeCategoriesSortable();
+  initializeSubCategorySortables();
+  updateDashboardStats(null, categories, subCategories);
+}
+
+function syncData() {
+  setStatus('Sync coming soon');
+}
+
+async function loadTransactions() {
+  const [transactions, accounts, categories, subCategories] = await Promise.all([
+    cache.getAll('transactions'),
+    cache.getAll('accounts'),
+    cache.getAll('categories'),
+    cache.getAll('subCategories')
+  ]);
+  const list = document.getElementById('transactions-list');
+
+  const accountMap = new Map(accounts.map(account => [account.id, account]));
+  const categoryMap = new Map(categories.map(category => [category.id, category]));
+  const subCategoryMap = new Map(subCategories.map(subCategory => [subCategory.id, subCategory]));
+  transactionSubCategoriesCache = subCategories;
+  const sortedTransactions = transactions
+    .slice()
+    .sort((left, right) => new Date(right.date) - new Date(left.date));
+
+  const emptyMarkup = !sortedTransactions.length
+    ? `
+      <div class="empty-state transaction-empty-state">
+        <h4>No transactions yet</h4>
+        <p>Use the first row to add your first transaction inline.</p>
+      </div>
+    `
+    : '';
+
+  list.innerHTML = `
+    <div class="transaction-table">
+      <div class="transaction-row transaction-head">
+        <div>Date</div>
+        <div>Account</div>
+        <div>Payee</div>
+        <div>Category</div>
+        <div>Subcategory</div>
+        <div>Memo</div>
+        <div>Amount</div>
+        <div>Actions</div>
+      </div>
+      ${renderTransactionEditorRow({ rowMode: 'create', accounts, categories, subCategories })}
+      ${sortedTransactions.map(transaction => {
+        if (editingTransactionId === transaction.id) {
+          return renderTransactionEditorRow({
+            rowMode: 'edit',
+            transaction,
+            accounts,
+            categories,
+            subCategories
+          });
+        }
+
+        return renderTransactionDisplayRow(transaction, accountMap, categoryMap, subCategoryMap);
+      }).join('')}
+    </div>
+    ${emptyMarkup}
+  `;
+}
+
+async function loadBudgetView() {
+  const [budgetAllocations, categories, subCategories] = await Promise.all([
+    cache.getAll('budgetAllocations'),
+    cache.getAll('categories'),
+    cache.getAll('subCategories')
+  ]);
+  const view = document.getElementById('budget-view');
+  populateCategoryOptions(document.getElementById('budget-category'), categories, 'Select a category');
+  await syncSubCategorySelect('budget-category', 'budget-subcategory');
+
+  if (!budgetAllocations.length) {
+    view.innerHTML = `
+      <div class="empty-state">
+        <h4>No allocations yet</h4>
+        <p>Create a monthly allocation by choosing a category and, if needed, one of its matching subcategories.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const categoryMap = new Map(categories.map(category => [category.id, category]));
+  const subCategoryMap = new Map(subCategories.map(subCategory => [subCategory.id, subCategory]));
+
+  view.innerHTML = budgetAllocations
+    .slice()
+    .sort((left, right) => {
+      if (left.month === right.month) {
+        return buildCategoryPath(categoryMap.get(left.categoryId), subCategoryMap.get(left.subCategoryId)).localeCompare(
+          buildCategoryPath(categoryMap.get(right.categoryId), subCategoryMap.get(right.subCategoryId))
+        );
+      }
+
+      return right.month.localeCompare(left.month);
+    })
+    .map(allocation => {
+      const category = categoryMap.get(allocation.categoryId);
+      const subCategory = allocation.subCategoryId ? subCategoryMap.get(allocation.subCategoryId) : null;
+
+      return `
+        <article class="data-card">
+          <div class="data-card-header">
+            <div class="data-card-copy">
+              <h4>${escapeHtml(allocation.month)}</h4>
+              <p>${escapeHtml(buildCategoryPath(category, subCategory))}</p>
+            </div>
+            <div class="pill">${formatCurrency(allocation.balance)} available</div>
+          </div>
+          <div class="data-card-footer">
+            <p>Assigned ${formatCurrency(allocation.assigned)}</p>
+            <p>Activity ${formatCurrency(allocation.activity)}</p>
+          </div>
+        </article>
+      `;
+    })
+    .join('');
+}
+
+function updateSectionHeader(sectionId) {
+  const copy = sectionCopy[sectionId];
+  document.getElementById('section-title').textContent = copy.title;
+  document.getElementById('section-subtitle').textContent = copy.subtitle;
+}
+
+async function refreshDashboard() {
+  const [accounts, categories, subCategories] = await Promise.all([
+    cache.getAll('accounts'),
+    cache.getAll('categories'),
+    cache.getAll('subCategories')
+  ]);
+
+  updateDashboardStats(accounts, categories, subCategories);
+}
+
+function updateDashboardStats(accounts, categories, subCategories) {
+  if (accounts) {
+    const onBudgetAccounts = accounts.filter(acc => !acc.offBudget);
+    const totalCash = onBudgetAccounts.reduce((sum, acc) => sum + Number(acc.currentBalance || 0), 0);
+
+    document.getElementById('total-cash').textContent = formatCurrency(totalCash);
+    document.getElementById('account-count').textContent = accounts.length.toString();
+  }
+
+  if (categories) {
+    document.getElementById('category-count').textContent = categories.length.toString();
+  }
+
+  if (subCategories) {
+    const label = subCategories.length === 1 ? 'subcategory' : 'subcategories';
+    document.getElementById('category-summary').textContent = `${subCategories.length} ${label} ready for assignment.`;
+  }
+}
+
+function setStatus(message) {
+  const statusPill = document.getElementById('status-pill');
+
+  if (!statusPill) {
+    return;
+  }
+
+  if (statusToastTimeoutId) {
+    clearTimeout(statusToastTimeoutId);
+  }
+
+  statusPill.textContent = message;
+  statusPill.classList.add('visible');
+
+  statusToastTimeoutId = window.setTimeout(() => {
+    statusPill.classList.remove('visible');
+    statusToastTimeoutId = null;
+  }, 3000);
+}
+
+function getActionIcon(type) {
+  if (type === 'save') {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm1 2v5h10V6.5L15.5 5H6Zm2 0h6v3H8V5Zm0 9v5h8v-5H8Z"></path>
+      </svg>
+    `;
+  }
+
+  if (type === 'close') {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m18.3 5.71-1.41-1.42L12 9.17 7.11 4.29 5.7 5.71 10.59 10.6 5.7 15.49l1.41 1.42L12 12l4.89 4.91 1.41-1.42-4.89-4.89 4.89-4.89Z"></path>
+      </svg>
+    `;
+  }
+
+  if (type === 'undo') {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 5V2L7 6l5 4V7c3.31 0 6 2.69 6 6a6 6 0 0 1-6 6H6v2h6a8 8 0 0 0 0-16Z"></path>
+      </svg>
+    `;
+  }
+
+  if (type === 'drag') {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9 5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm0 5.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM9 16a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM15 5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm0 5.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM15 16a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z"></path>
+      </svg>
+    `;
+  }
+
+  if (type === 'trash') {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm1 7h2v7h-2v-7Zm4 0h2v7h-2v-7ZM7 10h2v7H7v-7Zm-1 10h12l1-12H5l1 12Z"></path>
+      </svg>
+    `;
+  }
+
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m3 17.25 9.88-9.88 3.75 3.75L6.75 21H3v-3.75Zm11.06-11.06 1.41-1.41a2 2 0 0 1 2.83 0l.94.94a2 2 0 0 1 0 2.83l-1.41 1.41-3.77-3.78Z"></path>
+    </svg>
+  `;
+}
+
+function setAccountFormMode(isEditing) {
+  const submitButton = document.getElementById('account-submit');
+  const cancelButton = document.getElementById('account-cancel');
+
+  submitButton.textContent = isEditing ? 'Update Account' : 'Save Account';
+  cancelButton.classList.toggle('hidden', !isEditing);
+}
+
+function resetAccountForm() {
+  editingAccountId = null;
+  document.getElementById('account-form').reset();
+  document.getElementById('acc-id').value = '';
+  setAccountFormMode(false);
+}
+
+function setCategoryFormMode(mode, context = {}) {
+  categoryFormMode = mode;
+  document.getElementById('category-form-mode').value = mode;
+
+  const eyebrow = document.getElementById('category-form-eyebrow');
+  const title = document.getElementById('category-form-title');
+  const nameLabel = document.getElementById('cat-name-label');
+  const noteLabel = document.getElementById('cat-note-label');
+  const offBudgetLabel = document.getElementById('cat-off-budget-label');
+  const subcatNameLabel = document.getElementById('subcat-name-label');
+  const submitButton = document.getElementById('category-submit');
+  const cancelButton = document.getElementById('category-cancel');
+  const categoryNameInput = document.getElementById('cat-name');
+  const subcatFields = document.getElementById('subcat-fields');
+  const subcatNameInput = document.getElementById('subcat-name');
+
+  if (mode === 'edit-category') {
+    eyebrow.textContent = 'Edit Category';
+    title.textContent = 'Update this category group';
+    nameLabel.textContent = 'Category Group';
+    noteLabel.textContent = 'Category Note';
+    offBudgetLabel.textContent = 'Mark this category group as off budget';
+    submitButton.textContent = 'Update Category';
+    categoryNameInput.readOnly = false;
+    subcatFields.classList.add('hidden');
+    subcatNameInput.required = false;
+  } else if (mode === 'add-subcategory') {
+    eyebrow.textContent = 'Add Subcategory';
+    title.textContent = `Add a subcategory to ${context.categoryName || 'this group'}`;
+    nameLabel.textContent = 'Parent Category';
+    noteLabel.textContent = 'Subcategory Note';
+    offBudgetLabel.textContent = 'Mark this subcategory as off budget';
+    subcatNameLabel.textContent = 'Subcategory Name';
+    submitButton.textContent = 'Save Subcategory';
+    categoryNameInput.readOnly = true;
+    subcatFields.classList.remove('hidden');
+    subcatNameInput.required = true;
+  } else if (mode === 'edit-subcategory') {
+    eyebrow.textContent = 'Edit Subcategory';
+    title.textContent = `Update ${context.subCategoryName || 'this subcategory'}`;
+    nameLabel.textContent = 'Parent Category';
+    noteLabel.textContent = 'Subcategory Note';
+    offBudgetLabel.textContent = 'Mark this subcategory as off budget';
+    subcatNameLabel.textContent = 'Subcategory Name';
+    submitButton.textContent = 'Update Subcategory';
+    categoryNameInput.readOnly = true;
+    subcatFields.classList.remove('hidden');
+    subcatNameInput.required = true;
+  } else {
+    eyebrow.textContent = 'Add Category';
+    title.textContent = 'Shape your spending plan';
+    nameLabel.textContent = 'Category Group';
+    noteLabel.textContent = 'Note';
+    offBudgetLabel.textContent = 'Mark this category group as off budget';
+    subcatNameLabel.textContent = 'First Subcategory';
+    submitButton.textContent = 'Save Category';
+    categoryNameInput.readOnly = false;
+    subcatFields.classList.remove('hidden');
+    subcatNameInput.required = false;
+  }
+
+  cancelButton.classList.toggle('hidden', mode === 'create-category');
+}
+
+function resetCategoryForm() {
+  categoryFormMode = 'create-category';
+  document.getElementById('category-form').reset();
+  document.getElementById('cat-id').value = '';
+  document.getElementById('subcat-id').value = '';
+  document.getElementById('cat-name').readOnly = false;
+  document.getElementById('subcat-fields').classList.remove('hidden');
+  document.getElementById('subcat-name').required = false;
+  setCategoryFormMode('create-category');
+}
+
+function sortItemsForDisplay(items) {
+  const hasManualSort = items.some(item => Number.isFinite(item.sortOrder));
+
+  return items.slice().sort((left, right) => {
+    if (hasManualSort) {
+      const leftOrder = Number.isFinite(left.sortOrder) ? left.sortOrder : Number.MAX_SAFE_INTEGER;
+      const rightOrder = Number.isFinite(right.sortOrder) ? right.sortOrder : Number.MAX_SAFE_INTEGER;
+
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+    }
+
+    return String(left.name || '').localeCompare(String(right.name || ''), undefined, { sensitivity: 'base' });
+  });
+}
+
+async function getNextSortOrder(collection) {
+  const items = await cache.getAll(collection);
+  const numericOrders = items
+    .map(item => item.sortOrder)
+    .filter(value => Number.isFinite(value));
+
+  if (!numericOrders.length) {
+    return null;
+  }
+
+  return Math.max(...numericOrders) + 1;
+}
+
+async function getNextGroupedSortOrder(collection, groupField, groupValue) {
+  const items = await cache.getAll(collection);
+  const groupedItems = items.filter(item => item[groupField] === groupValue);
+  const numericOrders = groupedItems
+    .map(item => item.sortOrder)
+    .filter(value => Number.isFinite(value));
+
+  if (!numericOrders.length) {
+    return null;
+  }
+
+  return Math.max(...numericOrders) + 1;
+}
+
+async function persistSortOrder(collection, orderedIds) {
+  await Promise.all(
+    orderedIds.map((id, index) => cache.update(collection, { id }, { $set: { sortOrder: index } }))
+  );
+}
+
+function destroySortableInstance(instance) {
+  if (instance) {
+    instance.destroy();
+  }
+}
+
+function destroySortableInstances(instances) {
+  instances.forEach(destroySortableInstance);
+  return [];
+}
+
+function initializeAccountsSortable() {
+  const list = document.getElementById('accounts-list');
+
+  destroySortableInstance(accountsSortable);
+
+  if (!list || list.children.length < 2) {
+    accountsSortable = null;
+    return;
+  }
+
+  accountsSortable = Sortable.create(list, {
+    animation: 180,
+    draggable: '.sortable-card',
+    filter: 'button, input, textarea, select',
+    preventOnFilter: false,
+    onEnd: async () => {
+      const orderedIds = Array.from(list.querySelectorAll('.sortable-card')).map(card => card.dataset.itemId);
+      await persistSortOrder('accounts', orderedIds);
+      await loadAccounts();
+      setStatus('Updated account order');
+    }
+  });
+}
+
+function initializeCategoriesSortable() {
+  const list = document.getElementById('categories-list');
+
+  destroySortableInstance(categoriesSortable);
+
+  if (!list || list.children.length < 2) {
+    categoriesSortable = null;
+    return;
+  }
+
+  categoriesSortable = Sortable.create(list, {
+    animation: 180,
+    draggable: '.sortable-card',
+    filter: 'button, input, textarea, select',
+    preventOnFilter: false,
+    onEnd: async () => {
+      const orderedIds = Array.from(list.querySelectorAll('.sortable-card')).map(card => card.dataset.itemId);
+      await persistSortOrder('categories', orderedIds);
+      await loadCategories();
+      await loadTransactions();
+      await loadBudgetView();
+      setStatus('Updated category order');
+    }
+  });
+}
+
+function initializeSubCategorySortables() {
+  subCategorySortables = destroySortableInstances(subCategorySortables);
+
+  document.querySelectorAll('.sub-list').forEach(list => {
+    if (list.children.length < 2) {
+      return;
+    }
+
+    const categoryId = list.dataset.categoryId;
+
+    const sortable = Sortable.create(list, {
+      animation: 180,
+      draggable: '.sortable-sub-item',
+      filter: 'button, input, textarea, select',
+      preventOnFilter: false,
+      onEnd: async () => {
+        const orderedIds = Array.from(list.querySelectorAll('.sortable-sub-item')).map(item => item.dataset.itemId);
+        await persistSortOrder('subCategories', orderedIds);
+        await loadCategories();
+        await loadTransactions();
+        await loadBudgetView();
+        setStatus('Updated subcategory order');
+      }
+    });
+
+    sortable.categoryId = categoryId;
+    subCategorySortables.push(sortable);
+  });
+}
+
+function formatCurrency(amount) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD'
+  }).format(Number(amount || 0));
+}
+
+function formatDate(value) {
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
+function getTodayDateValue() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function getGoalLabel(goalType, goalAmount) {
+  if (goalType === 'monthly' && goalAmount) {
+    return `Monthly ${formatCurrency(goalAmount)}`;
+  }
+
+  if (goalType === 'target' && goalAmount) {
+    return `Target ${formatCurrency(goalAmount)}`;
+  }
+
+  return 'Flexible';
+}
+
+function getSubCategoryMeta(subCategory) {
+  const segments = [];
+
+  if (subCategory.goalType === 'monthly') {
+    segments.push('monthly funding');
+  } else if (subCategory.goalType === 'target') {
+    segments.push('target balance');
+  }
+
+  if (subCategory.goalAmount) {
+    segments.push(formatCurrency(subCategory.goalAmount));
+  }
+
+  if (subCategory.note) {
+    segments.push(subCategory.note);
+  }
+
+  return segments.join(' | ') || 'Flexible';
+}
+
+function buildSelectOptions(items, selectedValue, placeholder) {
+  return [`<option value="">${escapeHtml(placeholder)}</option>`]
+    .concat(items.map(item => `
+      <option value="${item.id}" ${item.id === selectedValue ? 'selected' : ''}>${escapeHtml(item.name)}</option>
+    `))
+    .join('');
+}
+
+function renderTransactionEditorRow({ rowMode, transaction = null, accounts, categories, subCategories }) {
+  const transactionId = transaction?.id || '';
+  const dateValue = transaction?.date || getTodayDateValue();
+  const accountId = transaction?.accountId || '';
+  const payee = transaction?.payee || '';
+  const categoryId = transaction?.categoryId || '';
+  const matchingSubCategories = sortItemsForDisplay(
+    subCategories.filter(subCategory => subCategory.categoryId === categoryId)
+  );
+  const subCategoryOptions = ['<option value="">No subcategory</option>']
+    .concat(matchingSubCategories.map(subCategory => `
+      <option value="${subCategory.id}" ${subCategory.id === transaction?.subCategoryId ? 'selected' : ''}>${escapeHtml(subCategory.name)}</option>
+    `))
+    .join('');
+  const memo = transaction?.memo || '';
+  const amount = transaction?.amount ?? '';
+  const isEditRow = rowMode === 'edit';
+
+  return `
+    <div class="transaction-row transaction-editor-row ${isEditRow ? 'is-editing' : 'is-creating'}" data-row-mode="${rowMode}" data-transaction-id="${transactionId}">
+      <div><input type="date" class="txn-input" data-field="date" value="${escapeHtml(dateValue)}"></div>
+      <div><select class="txn-input" data-field="accountId">${buildSelectOptions(accounts, accountId, 'Select')}</select></div>
+      <div><input type="text" class="txn-input" data-field="payee" value="${escapeHtml(payee)}" placeholder="Payee"></div>
+      <div><select class="txn-input txn-category-select" data-field="categoryId">${buildSelectOptions(categories, categoryId, 'Select')}</select></div>
+      <div><select class="txn-input txn-subcategory-select" data-field="subCategoryId" ${!categoryId || !matchingSubCategories.length ? 'disabled' : ''}>${subCategoryOptions}</select></div>
+      <div><input type="text" class="txn-input" data-field="memo" value="${escapeHtml(memo)}" placeholder="Memo"></div>
+      <div><input type="number" class="txn-input txn-amount-input" data-field="amount" value="${escapeHtml(String(amount))}" step="0.01" placeholder="0.00"></div>
+      <div class="transaction-actions">
+        <button type="button" class="icon-button" onclick="${isEditRow ? `saveTransactionEdit('${transactionId}')` : 'createTransaction()'}" aria-label="${isEditRow ? 'Save transaction' : 'Add transaction'}" title="${isEditRow ? 'Save transaction' : 'Add transaction'}">
+          ${getActionIcon('save')}
+        </button>
+        <button type="button" class="icon-button ${isEditRow ? '' : 'ghost'}" onclick="${isEditRow ? 'cancelTransactionEdit()' : 'clearTransactionDraft()'}" aria-label="${isEditRow ? 'Cancel edit' : 'Clear row'}" title="${isEditRow ? 'Cancel edit' : 'Clear row'}">
+          ${getActionIcon(isEditRow ? 'close' : 'undo')}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderTransactionDisplayRow(transaction, accountMap, categoryMap, subCategoryMap) {
+  const account = accountMap.get(transaction.accountId);
+  const category = categoryMap.get(transaction.categoryId);
+  const subCategory = transaction.subCategoryId ? subCategoryMap.get(transaction.subCategoryId) : null;
+  const amountClass = Number(transaction.amount) >= 0 ? 'positive' : 'negative';
+
+  return `
+    <div class="transaction-row" data-transaction-id="${transaction.id}">
+      <div>${escapeHtml(formatDate(transaction.date))}</div>
+      <div>${escapeHtml(account ? account.name : 'Unknown account')}</div>
+      <div class="transaction-primary-cell">${escapeHtml(transaction.payee)}</div>
+      <div>${escapeHtml(category ? category.name : 'Uncategorized')}</div>
+      <div>${escapeHtml(subCategory ? subCategory.name : '')}</div>
+      <div class="transaction-muted-cell">${escapeHtml(transaction.memo || '')}</div>
+      <div class="amount ${amountClass}">${formatCurrency(transaction.amount)}</div>
+      <div class="transaction-actions">
+        <button type="button" class="icon-button" onclick="editTransaction('${transaction.id}')" aria-label="Edit transaction" title="Edit transaction">
+          ${getActionIcon('edit')}
+        </button>
+        <button type="button" class="icon-button danger" onclick="confirmDeleteTransaction('${transaction.id}')" aria-label="Delete transaction" title="Delete transaction">
+          ${getActionIcon('trash')}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function populateAccountOptions(select, accounts, placeholder) {
+  if (!select) {
+    return;
+  }
+
+  const previousValue = select.value;
+  const options = [`<option value="">${escapeHtml(placeholder)}</option>`]
+    .concat(accounts.map(account => `<option value="${account.id}">${escapeHtml(account.name)}</option>`));
+
+  select.innerHTML = options.join('');
+  select.value = accounts.some(account => account.id === previousValue)
+    ? previousValue
+    : accounts[0]?.id || '';
+}
+
+function populateCategoryOptions(select, categories, placeholder) {
+  if (!select) {
+    return;
+  }
+
+  const previousValue = select.value;
+  const options = [`<option value="">${escapeHtml(placeholder)}</option>`]
+    .concat(categories.map(category => `<option value="${category.id}">${escapeHtml(category.name)}</option>`));
+
+  select.innerHTML = options.join('');
+  select.value = categories.some(category => category.id === previousValue)
+    ? previousValue
+    : categories[0]?.id || '';
+}
+
+async function syncSubCategorySelect(categorySelectId, subCategorySelectId) {
+  const categorySelect = document.getElementById(categorySelectId);
+  const subCategorySelect = document.getElementById(subCategorySelectId);
+
+  if (!categorySelect || !subCategorySelect) {
+    return;
+  }
+
+  const selectedCategoryId = categorySelect.value;
+  const previousValue = subCategorySelect.value;
+  const subCategories = await cache.getAll('subCategories');
+  const matchingSubCategories = subCategories.filter(subCategory => subCategory.categoryId === selectedCategoryId);
+  const options = ['<option value="">No subcategory</option>']
+    .concat(matchingSubCategories.map(subCategory => `<option value="${subCategory.id}">${escapeHtml(subCategory.name)}</option>`));
+
+  subCategorySelect.innerHTML = options.join('');
+  subCategorySelect.disabled = !selectedCategoryId || matchingSubCategories.length === 0;
+  subCategorySelect.value = matchingSubCategories.some(subCategory => subCategory.id === previousValue)
+    ? previousValue
+    : '';
+}
+
+function buildCategoryPath(category, subCategory) {
+  if (category && subCategory) {
+    return `${category.name} / ${subCategory.name}`;
+  }
+
+  if (category) {
+    return category.name;
+  }
+
+  if (subCategory) {
+    return subCategory.name;
+  }
+
+  return 'Uncategorized';
+}
+
+async function resolveValidatedSubCategory(categoryId, subCategoryId) {
+  if (!subCategoryId) {
+    return null;
+  }
+
+  const subCategories = await cache.getAll('subCategories');
+  const matchingSubCategory = subCategories.find(subCategory => subCategory.id === subCategoryId);
+
+  if (!matchingSubCategory || matchingSubCategory.categoryId !== categoryId) {
+    throw new Error('Selected subcategory does not belong to the chosen category.');
+  }
+
+  return matchingSubCategory;
+}
+
+function getTransactionEditorRow(transactionId = '') {
+  const selector = transactionId
+    ? `.transaction-editor-row[data-transaction-id="${transactionId}"]`
+    : '.transaction-editor-row[data-row-mode="create"]';
+
+  return document.querySelector(selector);
+}
+
+function updateTransactionRowSubcategories(row) {
+  if (!row) {
+    return;
+  }
+
+  const categorySelect = row.querySelector('.txn-category-select');
+  const subCategorySelect = row.querySelector('.txn-subcategory-select');
+
+  if (!categorySelect || !subCategorySelect) {
+    return;
+  }
+
+  const categoryId = categorySelect.value;
+  const matchingSubCategories = sortItemsForDisplay(
+    transactionSubCategoriesCache.filter(subCategory => subCategory.categoryId === categoryId)
+  );
+  const previousValue = subCategorySelect.value;
+  const options = ['<option value="">No subcategory</option>']
+    .concat(matchingSubCategories.map(subCategory => `
+      <option value="${subCategory.id}">${escapeHtml(subCategory.name)}</option>
+    `))
+    .join('');
+
+  subCategorySelect.innerHTML = options;
+  subCategorySelect.disabled = !categoryId || !matchingSubCategories.length;
+  subCategorySelect.value = matchingSubCategories.some(subCategory => subCategory.id === previousValue) ? previousValue : '';
+}
+
+function readTransactionRowValues(row) {
+  return {
+    date: row.querySelector('[data-field="date"]').value,
+    accountId: row.querySelector('[data-field="accountId"]').value,
+    payee: row.querySelector('[data-field="payee"]').value.trim(),
+    categoryId: row.querySelector('[data-field="categoryId"]').value,
+    subCategoryId: row.querySelector('[data-field="subCategoryId"]').value,
+    memo: row.querySelector('[data-field="memo"]').value.trim(),
+    amount: parseFloat(row.querySelector('[data-field="amount"]').value)
+  };
+}
+
+function validateTransactionValues(values) {
+  if (!values.date) {
+    throw new Error('Transaction date is required.');
+  }
+
+  if (!values.accountId) {
+    throw new Error('Please choose an account.');
+  }
+
+  if (!values.payee) {
+    throw new Error('Payee is required.');
+  }
+
+  if (!values.categoryId) {
+    throw new Error('Please choose a category.');
+  }
+
+  if (!Number.isFinite(values.amount)) {
+    throw new Error('Please enter a valid amount.');
+  }
+}
+
+function normalizeImportHeader(header) {
+  return String(header || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s-]+/g, '');
+}
+
+function parseCsvText(csvText) {
+  const rows = [];
+  let currentRow = [];
+  let currentValue = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < csvText.length; index += 1) {
+    const char = csvText[index];
+    const nextChar = csvText[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        currentValue += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      currentRow.push(currentValue);
+      currentValue = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') {
+        index += 1;
+      }
+      currentRow.push(currentValue);
+      rows.push(currentRow);
+      currentRow = [];
+      currentValue = '';
+      continue;
+    }
+
+    currentValue += char;
+  }
+
+  if (currentValue.length || currentRow.length) {
+    currentRow.push(currentValue);
+    rows.push(currentRow);
+  }
+
+  return rows.filter(row => row.some(cell => String(cell).trim() !== ''));
+}
+
+function resolveImportColumnIndex(headerMap, keys) {
+  return keys.find(key => headerMap.has(key)) ? headerMap.get(keys.find(key => headerMap.has(key))) : -1;
+}
+
+function parseImportedAmount(rawValue) {
+  const trimmed = String(rawValue || '').trim();
+
+  if (!trimmed) {
+    return Number.NaN;
+  }
+
+  const normalized = trimmed
+    .replace(/[$,]/g, '')
+    .replace(/^\((.*)\)$/, '-$1');
+
+  return Number.parseFloat(normalized);
+}
+
+function buildTransactionImportMaps(accounts, categories, subCategories) {
+  return {
+    accountsByName: new Map(accounts.map(account => [account.name.trim().toLowerCase(), account])),
+    categoriesByName: new Map(categories.map(category => [category.name.trim().toLowerCase(), category])),
+    subCategoriesByScopedName: new Map(
+      subCategories.map(subCategory => [`${subCategory.categoryId}::${subCategory.name.trim().toLowerCase()}`, subCategory])
+    )
+  };
+}
+
+async function importTransactionsFromCsv() {
+  const fileInput = document.getElementById('transaction-csv-file');
+  const file = fileInput?.files?.[0];
+
+  if (!file) {
+    setStatus('Choose a CSV file to import.');
+    return;
+  }
+
+  try {
+    const csvText = await file.text();
+    const rows = parseCsvText(csvText);
+
+    if (rows.length < 2) {
+      throw new Error('The CSV must include a header row and at least one transaction row.');
+    }
+
+    const headerMap = new Map(rows[0].map((header, index) => [normalizeImportHeader(header), index]));
+    const columnIndexes = {
+      date: resolveImportColumnIndex(headerMap, ['date']),
+      account: resolveImportColumnIndex(headerMap, ['account', 'accountname']),
+      payee: resolveImportColumnIndex(headerMap, ['payee']),
+      category: resolveImportColumnIndex(headerMap, ['category', 'categoryname']),
+      subCategory: resolveImportColumnIndex(headerMap, ['subcategory', 'subcat', 'subcategoryname']),
+      amount: resolveImportColumnIndex(headerMap, ['amount']),
+      memo: resolveImportColumnIndex(headerMap, ['memo', 'note', 'notes'])
+    };
+
+    const missingColumns = Object.entries(columnIndexes)
+      .filter(([key, index]) => ['date', 'account', 'payee', 'category', 'amount'].includes(key) && index === -1)
+      .map(([key]) => key);
+
+    if (missingColumns.length) {
+      throw new Error(`Missing required CSV column(s): ${missingColumns.join(', ')}.`);
+    }
+
+    const [accounts, categories, subCategories] = await Promise.all([
+      cache.getAll('accounts'),
+      cache.getAll('categories'),
+      cache.getAll('subCategories')
+    ]);
+    const { accountsByName, categoriesByName, subCategoriesByScopedName } = buildTransactionImportMaps(accounts, categories, subCategories);
+    const transactionsToInsert = [];
+    const errors = [];
+
+    rows.slice(1).forEach((row, rowIndex) => {
+      const csvRowNumber = rowIndex + 2;
+      const date = String(row[columnIndexes.date] || '').trim();
+      const accountName = String(row[columnIndexes.account] || '').trim().toLowerCase();
+      const payee = String(row[columnIndexes.payee] || '').trim();
+      const categoryName = String(row[columnIndexes.category] || '').trim().toLowerCase();
+      const subCategoryName = columnIndexes.subCategory === -1 ? '' : String(row[columnIndexes.subCategory] || '').trim().toLowerCase();
+      const amountRaw = String(row[columnIndexes.amount] || '').trim();
+      const memo = columnIndexes.memo === -1 ? '' : String(row[columnIndexes.memo] || '').trim();
+      const account = accountsByName.get(accountName);
+      const category = categoriesByName.get(categoryName);
+      const amount = parseImportedAmount(amountRaw);
+
+      if (!date || Number.isNaN(new Date(date).getTime())) {
+        errors.push(`Row ${csvRowNumber}: invalid date "${date}".`);
+        return;
+      }
+
+      if (!account) {
+        errors.push(`Row ${csvRowNumber}: account "${row[columnIndexes.account]}" was not found.`);
+        return;
+      }
+
+      if (!payee) {
+        errors.push(`Row ${csvRowNumber}: payee is required.`);
+        return;
+      }
+
+      if (!category) {
+        errors.push(`Row ${csvRowNumber}: category "${row[columnIndexes.category]}" was not found.`);
+        return;
+      }
+
+      if (!Number.isFinite(amount)) {
+        errors.push(`Row ${csvRowNumber}: amount "${row[columnIndexes.amount]}" is not valid.`);
+        return;
+      }
+
+      let subCategory = null;
+
+      if (subCategoryName) {
+        subCategory = subCategoriesByScopedName.get(`${category.id}::${subCategoryName}`);
+
+        if (!subCategory) {
+          errors.push(`Row ${csvRowNumber}: subcategory "${row[columnIndexes.subCategory]}" was not found under "${category.name}".`);
+          return;
+        }
+      }
+
+      transactionsToInsert.push(new Transaction(date, account.id, payee, category.id, subCategory?.id || null, amount, memo));
+    });
+
+    if (errors.length) {
+      await Swal.fire({
+        title: 'CSV Import Blocked',
+        html: `<div class="import-error-list">${errors.slice(0, 8).map(error => `<p>${escapeHtml(error)}</p>`).join('')}${errors.length > 8 ? `<p>...and ${errors.length - 8} more.</p>` : ''}</div>`,
+        icon: 'error',
+        confirmButtonText: 'Close',
+        background: '#fffdf8',
+        color: '#163331',
+        confirmButtonColor: '#af5d39',
+        customClass: {
+          popup: 'budget-alert-popup'
+        }
+      });
+      return;
+    }
+
+    await Promise.all(transactionsToInsert.map(transaction => cache.insert('transactions', transaction)));
+    fileInput.value = '';
+    await loadTransactions();
+    setStatus(`Imported ${transactionsToInsert.length} transaction${transactionsToInsert.length === 1 ? '' : 's'}.`);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function createTransaction() {
+  try {
+    const row = getTransactionEditorRow();
+    const values = readTransactionRowValues(row);
+    validateTransactionValues(values);
+    const matchingSubCategory = await resolveValidatedSubCategory(values.categoryId, values.subCategoryId);
+    const transaction = new Transaction(
+      values.date,
+      values.accountId,
+      values.payee,
+      values.categoryId,
+      matchingSubCategory?.id || null,
+      values.amount,
+      values.memo
+    );
+
+    await cache.insert('transactions', transaction);
+    await loadTransactions();
+    setStatus(`Saved transaction: ${values.payee}`);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+function clearTransactionDraft() {
+  loadTransactions();
+}
+
+function editTransaction(transactionId) {
+  editingTransactionId = transactionId;
+  loadTransactions();
+}
+
+function cancelTransactionEdit() {
+  editingTransactionId = null;
+  loadTransactions();
+}
+
+async function saveTransactionEdit(transactionId) {
+  try {
+    const row = getTransactionEditorRow(transactionId);
+    const values = readTransactionRowValues(row);
+    validateTransactionValues(values);
+    const matchingSubCategory = await resolveValidatedSubCategory(values.categoryId, values.subCategoryId);
+
+    await cache.update('transactions', { id: transactionId }, { $set: {
+      date: values.date,
+      accountId: values.accountId,
+      payee: values.payee,
+      categoryId: values.categoryId,
+      subCategoryId: matchingSubCategory?.id || null,
+      amount: values.amount,
+      memo: values.memo
+    } });
+
+    editingTransactionId = null;
+    await loadTransactions();
+    setStatus(`Updated transaction: ${values.payee}`);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function confirmDeleteTransaction(transactionId) {
+  const transactions = await cache.getAll('transactions');
+  const transaction = transactions.find(entry => entry.id === transactionId);
+
+  if (!transaction) {
+    setStatus('Transaction not found.');
+    return;
+  }
+
+  const shouldDelete = await confirmDestructiveAction(
+    `Delete transaction "${transaction.payee}"?`,
+    'This action cannot be undone.'
+  );
+
+  if (!shouldDelete) {
+    setStatus(`Kept transaction: ${transaction.payee}`);
+    return;
+  }
+
+  await cache.remove('transactions', { id: transactionId });
+
+  if (editingTransactionId === transactionId) {
+    editingTransactionId = null;
+  }
+
+  await loadTransactions();
+  setStatus(`Deleted transaction: ${transaction.payee}`);
+}
+
+async function confirmDestructiveAction(title, text) {
+  const result = await Swal.fire({
+    title,
+    text,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Delete',
+    cancelButtonText: 'Cancel',
+    reverseButtons: true,
+    focusCancel: true,
+    background: '#fffdf8',
+    color: '#163331',
+    confirmButtonColor: '#af5d39',
+    cancelButtonColor: '#6d7e7b',
+    customClass: {
+      popup: 'budget-alert-popup'
+    }
+  });
+
+  return result.isConfirmed;
+}
+
+async function editAccount(accountId) {
+  const accounts = await cache.getAll('accounts');
+  const account = accounts.find(entry => entry.id === accountId);
+
+  if (!account) {
+    setStatus('Account not found.');
+    return;
+  }
+
+  editingAccountId = account.id;
+  document.getElementById('acc-id').value = account.id;
+  document.getElementById('acc-name').value = account.name || '';
+  document.getElementById('acc-desc').value = account.description || '';
+  document.getElementById('acc-start').value = Number(account.startingBalance || 0);
+  document.getElementById('acc-current').value = Number(account.currentBalance || 0);
+  document.getElementById('acc-off').checked = Boolean(account.offBudget);
+  setAccountFormMode(true);
+  setStatus(`Editing account: ${account.name}`);
+  document.getElementById('acc-name').focus();
+}
+
+async function confirmDeleteAccount(accountId) {
+  const [accounts, transactions] = await Promise.all([
+    cache.getAll('accounts'),
+    cache.getAll('transactions')
+  ]);
+  const account = accounts.find(entry => entry.id === accountId);
+
+  if (!account) {
+    setStatus('Account not found.');
+    return;
+  }
+
+  const linkedTransactions = transactions.filter(transaction => transaction.accountId === accountId);
+
+  if (linkedTransactions.length) {
+    setStatus(`Can't delete ${account.name} while ${linkedTransactions.length} transaction(s) still reference it.`);
+    return;
+  }
+
+  const shouldDelete = await confirmDestructiveAction(
+    `Delete account "${account.name}"?`,
+    'This action cannot be undone.'
+  );
+
+  if (!shouldDelete) {
+    setStatus(`Kept account: ${account.name}`);
+    return;
+  }
+
+  await cache.remove('accounts', { id: accountId });
+
+  if (editingAccountId === accountId) {
+    resetAccountForm();
+  }
+
+  await loadAccounts();
+  await refreshDashboard();
+  await loadTransactions();
+  setStatus(`Deleted account: ${account.name}`);
+}
+
+async function editCategory(categoryId) {
+  const categories = await cache.getAll('categories');
+  const category = categories.find(entry => entry.id === categoryId);
+
+  if (!category) {
+    setStatus('Category not found.');
+    return;
+  }
+
+  document.getElementById('cat-id').value = category.id;
+  document.getElementById('subcat-id').value = '';
+  document.getElementById('cat-name').value = category.name || '';
+  document.getElementById('subcat-name').value = '';
+  document.getElementById('cat-goal-type').value = 'none';
+  document.getElementById('cat-goal-amount').value = '';
+  document.getElementById('cat-note').value = category.note || '';
+  document.getElementById('cat-off-budget').checked = Boolean(category.offBudget);
+  setCategoryFormMode('edit-category');
+  setStatus(`Editing category: ${category.name}`);
+  document.getElementById('cat-name').focus();
+}
+
+async function startAddSubCategory(categoryId) {
+  const categories = await cache.getAll('categories');
+  const category = categories.find(entry => entry.id === categoryId);
+
+  if (!category) {
+    setStatus('Category not found.');
+    return;
+  }
+
+  document.getElementById('cat-id').value = category.id;
+  document.getElementById('subcat-id').value = '';
+  document.getElementById('cat-name').value = category.name || '';
+  document.getElementById('subcat-name').value = '';
+  document.getElementById('cat-goal-type').value = 'none';
+  document.getElementById('cat-goal-amount').value = '';
+  document.getElementById('cat-note').value = '';
+  document.getElementById('cat-off-budget').checked = Boolean(category.offBudget);
+  setCategoryFormMode('add-subcategory', { categoryName: category.name });
+  setStatus(`Adding a subcategory to ${category.name}`);
+  document.getElementById('subcat-name').focus();
+}
+
+async function editSubCategory(subCategoryId) {
+  const [subCategories, categories] = await Promise.all([
+    cache.getAll('subCategories'),
+    cache.getAll('categories')
+  ]);
+  const subCategory = subCategories.find(entry => entry.id === subCategoryId);
+
+  if (!subCategory) {
+    setStatus('Subcategory not found.');
+    return;
+  }
+
+  const category = categories.find(entry => entry.id === subCategory.categoryId);
+  document.getElementById('cat-id').value = subCategory.categoryId;
+  document.getElementById('subcat-id').value = subCategory.id;
+  document.getElementById('cat-name').value = category?.name || '';
+  document.getElementById('subcat-name').value = subCategory.name || '';
+  document.getElementById('cat-goal-type').value = subCategory.goalType || 'none';
+  document.getElementById('cat-goal-amount').value = Number(subCategory.goalAmount || 0);
+  document.getElementById('cat-note').value = subCategory.note || '';
+  document.getElementById('cat-off-budget').checked = Boolean(subCategory.offBudget);
+  setCategoryFormMode('edit-subcategory', {
+    categoryName: category?.name,
+    subCategoryName: subCategory.name
+  });
+  setStatus(`Editing subcategory: ${subCategory.name}`);
+  document.getElementById('subcat-name').focus();
+}
+
+async function confirmDeleteCategory(categoryId) {
+  const [categories, subCategories, transactions, budgetAllocations] = await Promise.all([
+    cache.getAll('categories'),
+    cache.getAll('subCategories'),
+    cache.getAll('transactions'),
+    cache.getAll('budgetAllocations')
+  ]);
+  const category = categories.find(entry => entry.id === categoryId);
+
+  if (!category) {
+    setStatus('Category not found.');
+    return;
+  }
+
+  const childSubCategories = subCategories.filter(entry => entry.categoryId === categoryId);
+  const linkedTransactions = transactions.filter(entry => entry.categoryId === categoryId);
+  const linkedAllocations = budgetAllocations.filter(entry => entry.categoryId === categoryId);
+
+  if (linkedTransactions.length || linkedAllocations.length) {
+    setStatus(`Can't delete ${category.name} while transactions or allocations still reference it.`);
+    return;
+  }
+
+  const warning = childSubCategories.length
+    ? `This will also delete ${childSubCategories.length} subcategory(ies). This action cannot be undone.`
+    : 'This action cannot be undone.';
+
+  if (!await confirmDestructiveAction(`Delete category "${category.name}"?`, warning)) {
+    setStatus(`Kept category: ${category.name}`);
+    return;
+  }
+
+  if (childSubCategories.length) {
+    await cache.remove('subCategories', { categoryId });
+  }
+
+  await cache.remove('categories', { id: categoryId });
+
+  if (document.getElementById('cat-id').value === categoryId) {
+    resetCategoryForm();
+  }
+
+  await loadCategories();
+  await loadTransactions();
+  await loadBudgetView();
+  await refreshDashboard();
+  setStatus(`Deleted category: ${category.name}`);
+}
+
+async function confirmDeleteSubCategory(subCategoryId) {
+  const [subCategories, transactions, budgetAllocations] = await Promise.all([
+    cache.getAll('subCategories'),
+    cache.getAll('transactions'),
+    cache.getAll('budgetAllocations')
+  ]);
+  const subCategory = subCategories.find(entry => entry.id === subCategoryId);
+
+  if (!subCategory) {
+    setStatus('Subcategory not found.');
+    return;
+  }
+
+  const linkedTransactions = transactions.filter(entry => entry.subCategoryId === subCategoryId);
+  const linkedAllocations = budgetAllocations.filter(entry => entry.subCategoryId === subCategoryId);
+
+  if (linkedTransactions.length || linkedAllocations.length) {
+    setStatus(`Can't delete ${subCategory.name} while transactions or allocations still reference it.`);
+    return;
+  }
+
+  if (!await confirmDestructiveAction(
+    `Delete subcategory "${subCategory.name}"?`,
+    'This action cannot be undone.'
+  )) {
+    setStatus(`Kept subcategory: ${subCategory.name}`);
+    return;
+  }
+
+  await cache.remove('subCategories', { id: subCategoryId });
+
+  if (document.getElementById('subcat-id').value === subCategoryId) {
+    resetCategoryForm();
+  }
+
+  await loadCategories();
+  await loadTransactions();
+  await loadBudgetView();
+  setStatus(`Deleted subcategory: ${subCategory.name}`);
+}
+
+// Load data on startup
+window.onload = () => {
+  window.editAccount = editAccount;
+  window.confirmDeleteAccount = confirmDeleteAccount;
+  window.editCategory = editCategory;
+  window.startAddSubCategory = startAddSubCategory;
+  window.editSubCategory = editSubCategory;
+  window.confirmDeleteCategory = confirmDeleteCategory;
+  window.confirmDeleteSubCategory = confirmDeleteSubCategory;
+  window.createTransaction = createTransaction;
+  window.clearTransactionDraft = clearTransactionDraft;
+  window.editTransaction = editTransaction;
+  window.cancelTransactionEdit = cancelTransactionEdit;
+  window.saveTransactionEdit = saveTransactionEdit;
+  window.confirmDeleteTransaction = confirmDeleteTransaction;
+  showSection('accounts');
+  refreshDashboard();
+  document.getElementById('budget-month').value = new Date().toISOString().slice(0, 7);
+  document.getElementById('account-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('acc-id').value;
+    const name = document.getElementById('acc-name').value;
+    const desc = document.getElementById('acc-desc').value;
+    const start = parseFloat(document.getElementById('acc-start').value);
+    const current = parseFloat(document.getElementById('acc-current').value);
+    const off = document.getElementById('acc-off').checked;
+
+    if (id) {
+      await cache.update('accounts', { id }, { $set: {
+        name,
+        description: desc,
+        startingBalance: start,
+        currentBalance: current,
+        offBudget: off
+      } });
+      await loadAccounts();
+      await refreshDashboard();
+      await loadTransactions();
+      setStatus(`Updated account: ${name}`);
+      resetAccountForm();
+      return;
+    }
+
+    const sortOrder = await getNextSortOrder('accounts');
+    const account = new Account(name, desc, start, current, off, sortOrder);
+    await cache.insert('accounts', account);
+    await loadAccounts();
+    await refreshDashboard();
+    await loadTransactions();
+    setStatus(`Saved account: ${name}`);
+    resetAccountForm();
+  });
+  document.getElementById('account-cancel').addEventListener('click', () => {
+    resetAccountForm();
+    setStatus('Account edit canceled');
+  });
+  document.getElementById('category-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const mode = document.getElementById('category-form-mode').value;
+    const categoryId = document.getElementById('cat-id').value;
+    const subCategoryRecordId = document.getElementById('subcat-id').value;
+    const name = document.getElementById('cat-name').value;
+    const subCategoryName = document.getElementById('subcat-name').value.trim();
+    const goalType = document.getElementById('cat-goal-type').value;
+    const goalAmount = parseFloat(document.getElementById('cat-goal-amount').value) || 0;
+    const note = document.getElementById('cat-note').value;
+    const offBudget = document.getElementById('cat-off-budget').checked;
+
+    if (mode === 'edit-category') {
+      await cache.update('categories', { id: categoryId }, { $set: {
+        name,
+        note,
+        offBudget
+      } });
+      await loadCategories();
+      await loadTransactions();
+      await loadBudgetView();
+      await refreshDashboard();
+      setStatus(`Updated category group: ${name}`);
+      resetCategoryForm();
+      return;
+    }
+
+    if (mode === 'add-subcategory') {
+      const sortOrder = await getNextGroupedSortOrder('subCategories', 'categoryId', categoryId);
+      const subCategory = new SubCategory(categoryId, subCategoryName, goalType, goalAmount, note, offBudget, sortOrder);
+      await cache.insert('subCategories', subCategory);
+      await loadCategories();
+      await loadTransactions();
+      await loadBudgetView();
+      setStatus(`Saved subcategory: ${subCategoryName}`);
+      resetCategoryForm();
+      return;
+    }
+
+    if (mode === 'edit-subcategory') {
+      await cache.update('subCategories', { id: subCategoryRecordId }, { $set: {
+        name: subCategoryName,
+        goalType,
+        goalAmount,
+        note,
+        offBudget
+      } });
+      await loadCategories();
+      await loadTransactions();
+      await loadBudgetView();
+      setStatus(`Updated subcategory: ${subCategoryName}`);
+      resetCategoryForm();
+      return;
+    }
+
+    const sortOrder = await getNextSortOrder('categories');
+    const category = new Category(name, note, offBudget, sortOrder);
+    const savedCategory = await cache.insert('categories', category);
+
+    if (subCategoryName) {
+      const subCategory = new SubCategory(savedCategory.id, subCategoryName, goalType, goalAmount, note, offBudget, null);
+      await cache.insert('subCategories', subCategory);
+    }
+
+    await loadCategories();
+    await refreshDashboard();
+    await loadTransactions();
+    await loadBudgetView();
+    setStatus(`Saved category group: ${name}`);
+    resetCategoryForm();
+  });
+  document.getElementById('category-cancel').addEventListener('click', () => {
+    resetCategoryForm();
+    setStatus('Category edit canceled');
+  });
+  document.getElementById('transactions-list').addEventListener('change', (e) => {
+    if (e.target.classList.contains('txn-category-select')) {
+      updateTransactionRowSubcategories(e.target.closest('.transaction-editor-row'));
+    }
+  });
+  document.getElementById('transaction-import-button').addEventListener('click', async () => {
+    await importTransactionsFromCsv();
+  });
+  document.getElementById('budget-category').addEventListener('change', async () => {
+    await syncSubCategorySelect('budget-category', 'budget-subcategory');
+  });
+  document.getElementById('budget-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    try {
+      const month = document.getElementById('budget-month').value;
+      const categoryId = document.getElementById('budget-category').value;
+      const subCategoryId = document.getElementById('budget-subcategory').value;
+      const assigned = parseFloat(document.getElementById('budget-assigned').value);
+      const activity = parseFloat(document.getElementById('budget-activity').value) || 0;
+      const matchingSubCategory = await resolveValidatedSubCategory(categoryId, subCategoryId);
+      const budgetAllocation = new BudgetAllocation(month, categoryId, matchingSubCategory?.id || null, assigned, activity);
+
+      await cache.insert('budgetAllocations', budgetAllocation);
+      e.target.reset();
+      document.getElementById('budget-month').value = new Date().toISOString().slice(0, 7);
+      await loadBudgetView();
+      setStatus(`Saved allocation for ${month}`);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+};
