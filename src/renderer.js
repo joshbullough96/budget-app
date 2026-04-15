@@ -162,7 +162,7 @@ async function loadCategories() {
               </div>
             </div>
             <div class="sub-item-actions">
-              <div class="pill ${subCategory.offBudget ? 'warn' : ''}">${getGoalLabel(subCategory.goalType, subCategory.goalAmount)}</div>
+              <div class="pill ${subCategory.offBudget ? 'warn' : ''}">${getGoalLabel(getSubCategoryTarget(subCategory).type, getSubCategoryTarget(subCategory).amount)}</div>
               <div class="icon-actions">
                 <button type="button" class="icon-button" onclick="editSubCategory('${subCategory.id}')" aria-label="Edit subcategory" title="Edit subcategory">
                   ${getActionIcon('edit')}
@@ -697,13 +697,41 @@ function getTodayDateValue() {
   return new Date().toISOString().split('T')[0];
 }
 
-function getGoalLabel(goalType, goalAmount) {
-  if (goalType === 'monthly' && goalAmount) {
-    return `Monthly ${formatCurrency(goalAmount)}`;
+const TARGET_TYPE_LABELS = {
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+  yearly: 'Yearly',
+  custom: 'Custom'
+};
+
+function normalizeTargetType(rawType) {
+  if (rawType === 'target') {
+    return 'custom';
   }
 
-  if (goalType === 'target' && goalAmount) {
-    return `Target ${formatCurrency(goalAmount)}`;
+  if (Object.prototype.hasOwnProperty.call(TARGET_TYPE_LABELS, rawType)) {
+    return rawType;
+  }
+
+  return '';
+}
+
+function getSubCategoryTarget(subCategory) {
+  return {
+    type: normalizeTargetType(subCategory.targetType || subCategory.goalType || ''),
+    amount: Number(subCategory.targetAmount ?? subCategory.goalAmount ?? 0)
+  };
+}
+
+function getGoalLabel(goalType, goalAmount) {
+  const normalizedType = normalizeTargetType(goalType);
+
+  if (normalizedType && goalAmount) {
+    return `${TARGET_TYPE_LABELS[normalizedType]} ${formatCurrency(goalAmount)}`;
+  }
+
+  if (normalizedType) {
+    return `${TARGET_TYPE_LABELS[normalizedType]} target`;
   }
 
   return 'Flexible';
@@ -711,15 +739,14 @@ function getGoalLabel(goalType, goalAmount) {
 
 function getSubCategoryMeta(subCategory) {
   const segments = [];
+  const target = getSubCategoryTarget(subCategory);
 
-  if (subCategory.goalType === 'monthly') {
-    segments.push('monthly funding');
-  } else if (subCategory.goalType === 'target') {
-    segments.push('target balance');
+  if (target.type) {
+    segments.push(`${TARGET_TYPE_LABELS[target.type].toLowerCase()} target`);
   }
 
-  if (subCategory.goalAmount) {
-    segments.push(formatCurrency(subCategory.goalAmount));
+  if (target.amount) {
+    segments.push(formatCurrency(target.amount));
   }
 
   if (subCategory.note) {
@@ -1433,7 +1460,7 @@ async function editCategory(categoryId) {
   document.getElementById('subcat-id').value = '';
   document.getElementById('cat-name').value = category.name || '';
   document.getElementById('subcat-name').value = '';
-  document.getElementById('cat-goal-type').value = 'none';
+  document.getElementById('cat-goal-type').value = '';
   document.getElementById('cat-goal-amount').value = '';
   document.getElementById('cat-note').value = category.note || '';
   document.getElementById('cat-off-budget').checked = Boolean(category.offBudget);
@@ -1455,7 +1482,7 @@ async function startAddSubCategory(categoryId) {
   document.getElementById('subcat-id').value = '';
   document.getElementById('cat-name').value = category.name || '';
   document.getElementById('subcat-name').value = '';
-  document.getElementById('cat-goal-type').value = 'none';
+  document.getElementById('cat-goal-type').value = '';
   document.getElementById('cat-goal-amount').value = '';
   document.getElementById('cat-note').value = '';
   document.getElementById('cat-off-budget').checked = Boolean(category.offBudget);
@@ -1481,8 +1508,8 @@ async function editSubCategory(subCategoryId) {
   document.getElementById('subcat-id').value = subCategory.id;
   document.getElementById('cat-name').value = category?.name || '';
   document.getElementById('subcat-name').value = subCategory.name || '';
-  document.getElementById('cat-goal-type').value = subCategory.goalType || 'none';
-  document.getElementById('cat-goal-amount').value = Number(subCategory.goalAmount || 0);
+  document.getElementById('cat-goal-type').value = getSubCategoryTarget(subCategory).type;
+  document.getElementById('cat-goal-amount').value = Number(subCategory.targetAmount ?? subCategory.goalAmount ?? 0) || '';
   document.getElementById('cat-note').value = subCategory.note || '';
   document.getElementById('cat-off-budget').checked = Boolean(subCategory.offBudget);
   setCategoryFormMode('edit-subcategory', {
@@ -1654,8 +1681,8 @@ window.onload = () => {
     const subCategoryRecordId = document.getElementById('subcat-id').value;
     const name = document.getElementById('cat-name').value;
     const subCategoryName = document.getElementById('subcat-name').value.trim();
-    const goalType = document.getElementById('cat-goal-type').value;
-    const goalAmount = parseFloat(document.getElementById('cat-goal-amount').value) || 0;
+    const targetType = normalizeTargetType(document.getElementById('cat-goal-type').value);
+    const targetAmount = parseFloat(document.getElementById('cat-goal-amount').value) || 0;
     const note = document.getElementById('cat-note').value;
     const offBudget = document.getElementById('cat-off-budget').checked;
 
@@ -1676,7 +1703,7 @@ window.onload = () => {
 
     if (mode === 'add-subcategory') {
       const sortOrder = await getNextGroupedSortOrder('subCategories', 'categoryId', categoryId);
-      const subCategory = new SubCategory(categoryId, subCategoryName, goalType, goalAmount, note, offBudget, sortOrder);
+      const subCategory = new SubCategory(categoryId, subCategoryName, targetType, targetAmount, note, offBudget, sortOrder);
       await cache.insert('subCategories', subCategory);
       await loadCategories();
       await loadTransactions();
@@ -1689,8 +1716,10 @@ window.onload = () => {
     if (mode === 'edit-subcategory') {
       await cache.update('subCategories', { id: subCategoryRecordId }, { $set: {
         name: subCategoryName,
-        goalType,
-        goalAmount,
+        targetType,
+        targetAmount,
+        goalType: targetType,
+        goalAmount: targetAmount,
         note,
         offBudget
       } });
@@ -1707,7 +1736,7 @@ window.onload = () => {
     const savedCategory = await cache.insert('categories', category);
 
     if (subCategoryName) {
-      const subCategory = new SubCategory(savedCategory.id, subCategoryName, goalType, goalAmount, note, offBudget, null);
+      const subCategory = new SubCategory(savedCategory.id, subCategoryName, targetType, targetAmount, note, offBudget, null);
       await cache.insert('subCategories', subCategory);
     }
 
