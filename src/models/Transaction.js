@@ -10,6 +10,7 @@ class Transaction {
     this.amount = parseFloat(amount); // Negative for outflow
     this.memo = memo;
     this.cleared = false;
+    this.runningBalance = null;
   }
 }
 

@@ -226,6 +226,13 @@ textarea {
   margin-bottom: 1.5rem;
 }
 
+.budget-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
 .hero-card,
 .panel {
   position: relative;
@@ -245,6 +252,13 @@ textarea {
   background:
     radial-gradient(circle at top right, rgba(244, 193, 110, 0.3), transparent 28%),
     linear-gradient(135deg, rgba(30, 127, 116, 0.14), rgba(255, 251, 245, 0.92));
+}
+
+.budget-cash-card {
+  background:
+    radial-gradient(circle at top right, rgba(244, 193, 110, 0.24), transparent 24%),
+    radial-gradient(circle at bottom left, rgba(30, 127, 116, 0.18), transparent 32%),
+    linear-gradient(135deg, rgba(255, 251, 245, 0.98), rgba(232, 244, 238, 0.96));
 }
 
 .hero-label {
@@ -344,6 +358,11 @@ textarea {
   font-weight: 600;
 }
 
+#subcat-fields {
+  display: grid;
+  gap: 1.35rem;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -370,16 +389,13 @@ select {
   -moz-appearance: none;
   background-image:
     linear-gradient(45deg, transparent 50%, rgba(22, 51, 49, 0.5) 50%),
-    linear-gradient(135deg, rgba(22, 51, 49, 0.5) 50%, transparent 50%),
-    radial-gradient(circle at right, rgba(30, 127, 116, 0.08), rgba(30, 127, 116, 0.08));
+    linear-gradient(135deg, rgba(22, 51, 49, 0.5) 50%, transparent 50%);
   background-position:
     calc(100% - 1.15rem) calc(50% - 0.12rem),
-    calc(100% - 0.8rem) calc(50% - 0.12rem),
-    calc(100% - 1.9rem) 50%;
+    calc(100% - 0.8rem) calc(50% - 0.12rem);
   background-size:
     0.4rem 0.4rem,
-    0.4rem 0.4rem,
-    2rem 2rem;
+    0.4rem 0.4rem;
   background-repeat: no-repeat;
 }
 
@@ -392,8 +408,7 @@ select:disabled {
   color: #8b9a97;
   background-image:
     linear-gradient(45deg, transparent 50%, rgba(109, 126, 123, 0.4) 50%),
-    linear-gradient(135deg, rgba(109, 126, 123, 0.4) 50%, transparent 50%),
-    radial-gradient(circle at right, rgba(109, 126, 123, 0.06), rgba(109, 126, 123, 0.06));
+    linear-gradient(135deg, rgba(109, 126, 123, 0.4) 50%, transparent 50%);
   background-color: rgba(245, 244, 240, 0.88);
   cursor: not-allowed;
 }
@@ -480,7 +495,7 @@ textarea {
 
 .transaction-row {
   display: grid;
-  grid-template-columns: 120px 140px minmax(160px, 1.2fr) 150px 150px minmax(150px, 1fr) 120px 120px;
+  grid-template-columns: 150px 140px minmax(160px, 1.2fr) 150px 150px minmax(150px, 1fr) 120px 130px 120px;
   gap: 0.75rem;
   align-items: center;
   padding: 0.85rem 1rem;
@@ -886,6 +901,6 @@ select.txn-input {
   }
 
   .transaction-row {
-    min-width: 1100px;
+    min-width: 1230px;
   }
 }

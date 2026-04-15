@@ -257,6 +257,7 @@ async function loadTransactions() {
         <div>Subcategory</div>
         <div>Memo</div>
         <div>Amount</div>
+        <div>Balance</div>
         <div>Actions</div>
       </div>
       ${renderTransactionEditorRow({ rowMode: 'create', accounts, categories, subCategories })}
@@ -353,10 +354,12 @@ async function refreshDashboard() {
 
 function updateDashboardStats(accounts, categories, subCategories) {
   if (accounts) {
+    const totalCash = accounts.reduce((sum, acc) => sum + Number(acc.currentBalance || 0), 0);
     const onBudgetAccounts = accounts.filter(acc => !acc.offBudget);
-    const totalCash = onBudgetAccounts.reduce((sum, acc) => sum + Number(acc.currentBalance || 0), 0);
+    const availableToBudget = onBudgetAccounts.reduce((sum, acc) => sum + Number(acc.currentBalance || 0), 0);
 
     document.getElementById('total-cash').textContent = formatCurrency(totalCash);
+    document.getElementById('available-to-budget').textContent = formatCurrency(availableToBudget);
     document.getElementById('account-count').textContent = accounts.length.toString();
   }
 
@@ -761,6 +764,7 @@ function renderTransactionEditorRow({ rowMode, transaction = null, accounts, cat
       <div><select class="txn-input txn-subcategory-select" data-field="subCategoryId" ${!categoryId || !matchingSubCategories.length ? 'disabled' : ''}>${subCategoryOptions}</select></div>
       <div><input type="text" class="txn-input" data-field="memo" value="${escapeHtml(memo)}" placeholder="Memo"></div>
       <div><input type="number" class="txn-input txn-amount-input" data-field="amount" value="${escapeHtml(String(amount))}" step="0.01" placeholder="0.00"></div>
+      <div class="transaction-muted-cell">Auto</div>
       <div class="transaction-actions">
         <button type="button" class="icon-button" onclick="${isEditRow ? `saveTransactionEdit('${transactionId}')` : 'createTransaction()'}" aria-label="${isEditRow ? 'Save transaction' : 'Add transaction'}" title="${isEditRow ? 'Save transaction' : 'Add transaction'}">
           ${getActionIcon('save')}
@@ -778,6 +782,9 @@ function renderTransactionDisplayRow(transaction, accountMap, categoryMap, subCa
   const category = categoryMap.get(transaction.categoryId);
   const subCategory = transaction.subCategoryId ? subCategoryMap.get(transaction.subCategoryId) : null;
   const amountClass = Number(transaction.amount) >= 0 ? 'positive' : 'negative';
+  const runningBalance = Number.isFinite(Number(transaction.runningBalance))
+    ? formatCurrency(transaction.runningBalance)
+    : '';
 
   return `
     <div class="transaction-row" data-transaction-id="${transaction.id}">
@@ -788,6 +795,7 @@ function renderTransactionDisplayRow(transaction, accountMap, categoryMap, subCa
       <div>${escapeHtml(subCategory ? subCategory.name : '')}</div>
       <div class="transaction-muted-cell">${escapeHtml(transaction.memo || '')}</div>
       <div class="amount ${amountClass}">${formatCurrency(transaction.amount)}</div>
+      <div class="amount">${runningBalance}</div>
       <div class="transaction-actions">
         <button type="button" class="icon-button" onclick="editTransaction('${transaction.id}')" aria-label="Edit transaction" title="Edit transaction">
           ${getActionIcon('edit')}
@@ -938,6 +946,56 @@ function readTransactionRowValues(row) {
     memo: row.querySelector('[data-field="memo"]').value.trim(),
     amount: parseFloat(row.querySelector('[data-field="amount"]').value)
   };
+}
+
+function compareTransactionsForRunningBalance(left, right) {
+  const dateDifference = new Date(left.date) - new Date(right.date);
+
+  if (dateDifference !== 0) {
+    return dateDifference;
+  }
+
+  return String(left.id).localeCompare(String(right.id));
+}
+
+async function syncTransactionDerivedState(accountIds = null) {
+  const [accounts, transactions] = await Promise.all([
+    cache.getAll('accounts'),
+    cache.getAll('transactions')
+  ]);
+  const targetAccountIds = accountIds
+    ? new Set(accountIds.filter(Boolean))
+    : new Set(accounts.map(account => account.id));
+  const transactionUpdates = [];
+  const accountUpdates = [];
+
+  accounts
+    .filter(account => targetAccountIds.has(account.id))
+    .forEach(account => {
+      const accountTransactions = transactions
+        .filter(transaction => transaction.accountId === account.id)
+        .slice()
+        .sort(compareTransactionsForRunningBalance);
+      let runningBalance = Number(account.startingBalance || 0);
+
+      accountTransactions.forEach(transaction => {
+        runningBalance += Number(transaction.amount || 0);
+
+        if (Number(transaction.runningBalance) !== runningBalance) {
+          transactionUpdates.push(
+            cache.update('transactions', { id: transaction.id }, { $set: { runningBalance } })
+          );
+        }
+      });
+
+      if (Number(account.currentBalance) !== runningBalance) {
+        accountUpdates.push(
+          cache.update('accounts', { id: account.id }, { $set: { currentBalance: runningBalance } })
+        );
+      }
+    });
+
+  await Promise.all([...transactionUpdates, ...accountUpdates]);
 }
 
 function validateTransactionValues(values) {
@@ -1159,7 +1217,10 @@ async function importTransactionsFromCsv() {
     }
 
     await Promise.all(transactionsToInsert.map(transaction => cache.insert('transactions', transaction)));
+    await syncTransactionDerivedState([...new Set(transactionsToInsert.map(transaction => transaction.accountId))]);
     fileInput.value = '';
+    await loadAccounts();
+    await refreshDashboard();
     await loadTransactions();
     setStatus(`Imported ${transactionsToInsert.length} transaction${transactionsToInsert.length === 1 ? '' : 's'}.`);
   } catch (error) {
@@ -1184,6 +1245,9 @@ async function createTransaction() {
     );
 
     await cache.insert('transactions', transaction);
+    await syncTransactionDerivedState([values.accountId]);
+    await loadAccounts();
+    await refreshDashboard();
     await loadTransactions();
     setStatus(`Saved transaction: ${values.payee}`);
   } catch (error) {
@@ -1207,6 +1271,13 @@ function cancelTransactionEdit() {
 
 async function saveTransactionEdit(transactionId) {
   try {
+    const transactions = await cache.getAll('transactions');
+    const existingTransaction = transactions.find(entry => entry.id === transactionId);
+
+    if (!existingTransaction) {
+      throw new Error('Transaction not found.');
+    }
+
     const row = getTransactionEditorRow(transactionId);
     const values = readTransactionRowValues(row);
     validateTransactionValues(values);
@@ -1222,7 +1293,10 @@ async function saveTransactionEdit(transactionId) {
       memo: values.memo
     } });
 
+    await syncTransactionDerivedState([existingTransaction.accountId, values.accountId]);
     editingTransactionId = null;
+    await loadAccounts();
+    await refreshDashboard();
     await loadTransactions();
     setStatus(`Updated transaction: ${values.payee}`);
   } catch (error) {
@@ -1250,11 +1324,14 @@ async function confirmDeleteTransaction(transactionId) {
   }
 
   await cache.remove('transactions', { id: transactionId });
+  await syncTransactionDerivedState([transaction.accountId]);
 
   if (editingTransactionId === transactionId) {
     editingTransactionId = null;
   }
 
+  await loadAccounts();
+  await refreshDashboard();
   await loadTransactions();
   setStatus(`Deleted transaction: ${transaction.payee}`);
 }
@@ -1521,9 +1598,17 @@ window.onload = () => {
   window.cancelTransactionEdit = cancelTransactionEdit;
   window.saveTransactionEdit = saveTransactionEdit;
   window.confirmDeleteTransaction = confirmDeleteTransaction;
-  showSection('accounts');
-  refreshDashboard();
   document.getElementById('budget-month').value = new Date().toISOString().slice(0, 7);
+  syncTransactionDerivedState()
+    .then(async () => {
+      showSection('accounts');
+      await refreshDashboard();
+    })
+    .catch(error => {
+      setStatus(error.message);
+      showSection('accounts');
+      refreshDashboard();
+    });
   document.getElementById('account-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = document.getElementById('acc-id').value;
