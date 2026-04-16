@@ -228,7 +228,7 @@ textarea {
 
 .budget-summary-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1rem;
   margin-bottom: 1.5rem;
 }
@@ -292,6 +292,10 @@ textarea {
   display: grid;
   grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
   gap: 1rem;
+}
+
+.section-grid.budget-layout {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .single-panel {
@@ -435,6 +439,11 @@ textarea {
   padding: 0.2rem 0;
 }
 
+.recurring-checkbox-row {
+  align-self: end;
+  min-height: 100%;
+}
+
 .checkbox-row input {
   width: auto;
   margin: 0;
@@ -480,6 +489,209 @@ textarea {
 .data-list {
   display: grid;
   gap: 0.9rem;
+}
+
+.budget-toolbar-panel {
+  margin-bottom: 1rem;
+}
+
+.budget-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.budget-month-nav,
+.budget-helper-actions,
+.budget-month-labels {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.budget-helper-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.budget-month-labels {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  min-width: 10rem;
+}
+
+.budget-month-labels h3 {
+  font-size: 1.5rem;
+}
+
+.budget-workspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.budget-groups {
+  display: grid;
+  gap: 1rem;
+}
+
+.budget-group-card {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid rgba(22, 51, 49, 0.08);
+  border-radius: 24px;
+  background: rgba(255, 253, 248, 0.92);
+}
+
+.budget-group-header,
+.budget-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) 120px 140px 120px 140px 72px;
+  gap: 0.75rem;
+  align-items: center;
+  min-width: 960px;
+  padding: 1rem 1.1rem;
+}
+
+.budget-group-header {
+  background:
+    radial-gradient(circle at top right, rgba(244, 193, 110, 0.16), transparent 30%),
+    linear-gradient(135deg, rgba(30, 127, 116, 0.06), rgba(255, 255, 255, 0.84));
+  border-bottom: 1px solid rgba(22, 51, 49, 0.08);
+}
+
+.budget-group-header h4,
+.budget-group-header p,
+.budget-line-copy strong,
+.budget-line-copy p {
+  margin: 0;
+}
+
+.budget-group-header p,
+.budget-line-copy p {
+  color: var(--muted);
+}
+
+.budget-group-totals {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  grid-column: 2 / -1;
+  flex-wrap: wrap;
+}
+
+.budget-row {
+  border-top: 1px solid rgba(22, 51, 49, 0.06);
+}
+
+.budget-row-stack {
+  border-top: 1px solid rgba(22, 51, 49, 0.06);
+}
+
+.budget-row-stack:first-of-type {
+  border-top: none;
+}
+
+.budget-row-stack .budget-row {
+  border-top: none;
+}
+
+.budget-row-head {
+  background: rgba(22, 51, 49, 0.04);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-top: none;
+}
+
+.budget-line-copy {
+  display: grid;
+  gap: 0.25rem;
+  align-content: center;
+}
+
+.budget-assigned-field {
+  display: flex;
+  align-items: center;
+}
+
+.budget-amount-input-shell {
+  display: grid;
+  grid-template-columns: 2.4rem minmax(0, 1fr);
+  align-items: center;
+  border: 1px solid rgba(30, 127, 116, 0.24);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 24px rgba(20, 38, 35, 0.08);
+  overflow: hidden;
+}
+
+.budget-amount-prefix {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  background: rgba(30, 127, 116, 0.08);
+  color: var(--primary-strong);
+  font-weight: 800;
+}
+
+.budget-assigned-input {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: right;
+  padding: 0.72rem 0.8rem;
+}
+
+.budget-assigned-input:focus {
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: inset 0 0 0 2px rgba(30, 127, 116, 0.2);
+}
+
+.budget-note-field {
+  display: flex;
+  align-items: center;
+}
+
+.budget-note-action {
+  display: flex;
+  justify-content: center;
+}
+
+.budget-note-action .icon-button.is-active {
+  background: rgba(30, 127, 116, 0.12);
+  border-color: rgba(30, 127, 116, 0.2);
+}
+
+.budget-note-editor {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0 1.1rem 1rem;
+  background: rgba(30, 127, 116, 0.03);
+}
+
+.budget-note-editor-copy {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.budget-note-editor-copy strong,
+.budget-note-editor-copy p {
+  margin: 0;
+}
+
+.budget-note-editor-copy p {
+  color: var(--muted);
+}
+
+.budget-note-textarea {
+  min-height: 5.5rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
 }
 
 .transaction-table-shell {
@@ -848,8 +1060,19 @@ select.txn-input {
   }
 
   .hero-grid,
-  .section-grid {
+  .section-grid,
+  .budget-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .budget-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .budget-month-nav,
+  .budget-helper-actions {
+    flex-wrap: wrap;
   }
 }
 

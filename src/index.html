@@ -157,6 +157,22 @@
                     <input type="number" id="cat-goal-amount" placeholder="0.00" step="0.01">
                   </label>
                 </div>
+                <div class="form-row">
+                  <label class="checkbox-row recurring-checkbox-row">
+                    <input type="checkbox" id="cat-recurring-enabled">
+                    <span>Use recurring budget amount</span>
+                  </label>
+                  <label>
+                    <span>Recurring Cadence</span>
+                    <select id="cat-recurring-cadence">
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  <span>Recurring Amount</span>
+                  <input type="number" id="cat-recurring-amount" placeholder="0.00" step="0.01">
+                </label>
               </div>
               <label>
                 <span id="cat-note-label">Note</span>
@@ -201,54 +217,36 @@
       </div>
 
       <div id="budget" class="section">
-        <section class="budget-summary-grid">
-          <article class="hero-card budget-cash-card">
-            <p class="hero-label">Available To Budget</p>
-            <h3 id="available-to-budget">$0.00</h3>
-            <p class="hero-copy">Current cash across all on-budget accounts, ready to assign.</p>
-          </article>
-        </section>
-        <div class="section-grid">
-          <section class="panel form-panel">
-            <div class="panel-heading">
-              <p class="eyebrow">Add Allocation</p>
-              <h3>Assign money to a month</h3>
+        <section class="panel budget-toolbar-panel">
+          <div class="budget-toolbar">
+            <div class="budget-month-nav" aria-label="Budget month navigation">
+              <button type="button" id="budget-month-prev" class="secondary-button compact-button">Previous</button>
+              <div class="budget-month-labels">
+                <p class="eyebrow">Selected Month</p>
+                <h3 id="budget-month-label">Month</h3>
+              </div>
+              <button type="button" id="budget-month-next" class="secondary-button compact-button">Next</button>
+              <button type="button" id="budget-month-current" class="secondary-button compact-button">Current Month</button>
             </div>
-            <form id="budget-form" class="stack-form">
-              <div class="form-row">
-                <label>
-                  <span>Month</span>
-                  <input type="month" id="budget-month" required>
-                </label>
-                <label>
-                  <span>Category</span>
-                  <select id="budget-category" required></select>
-                </label>
-              </div>
-              <div class="form-row">
-                <label>
-                  <span>Subcategory</span>
-                  <select id="budget-subcategory"></select>
-                </label>
-                <label>
-                  <span>Assigned</span>
-                  <input type="number" id="budget-assigned" placeholder="0.00" step="0.01" required>
-                </label>
-              </div>
-              <label>
-                <span>Activity</span>
-                <input type="number" id="budget-activity" placeholder="0.00" step="0.01" value="0">
-              </label>
-              <button type="submit" class="primary-button">Save Allocation</button>
-            </form>
-          </section>
-
-          <section class="panel list-panel">
+            <div class="budget-helper-actions">
+              <button type="button" id="budget-copy-previous" class="secondary-button compact-button">Copy Previous Month</button>
+              <button type="button" id="budget-apply-recurring" class="secondary-button compact-button">Apply Recurring</button>
+              <button type="button" id="budget-auto-apply" class="secondary-button compact-button">Auto-Apply Prefill</button>
+              <button type="button" id="budget-reset-draft" class="secondary-button compact-button">Reset Draft</button>
+              <button type="button" id="budget-save-month" class="primary-button compact-button">Save Month</button>
+            </div>
+          </div>
+          <p id="budget-draft-hint" class="panel-hint">Monthly budget drafts stay editable until you save them.</p>
+        </section>
+        <section id="budget-summary-cards" class="budget-summary-grid"></section>
+        <div class="section-grid budget-layout">
+          <section class="panel list-panel single-panel">
             <div class="panel-heading">
               <p class="eyebrow">Monthly Budget</p>
               <h3>Plan every dollar</h3>
+              <p class="panel-hint">Assign money at the row level, review carryover, and let transactions drive Activity automatically.</p>
             </div>
-            <div id="budget-view" class="data-list"></div>
+            <div id="budget-view" class="budget-workspace"></div>
           </section>
         </div>
       </div>

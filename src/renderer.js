@@ -17,6 +17,16 @@ let categoriesSortable = null;
 let subCategorySortables = [];
 let editingTransactionId = null;
 let transactionSubCategoriesCache = [];
+let budgetState = {
+  selectedMonth: '',
+  loadedMonth: '',
+  context: null,
+  draftAllocations: new Map(),
+  draftSourceMonth: null,
+  draftSourceLabel: '',
+  expandedNoteEntryKey: null,
+  isPrefilled: false
+};
 const sectionCopy = {
   accounts: {
     title: 'Accounts Overview',
@@ -279,61 +289,742 @@ async function loadTransactions() {
   `;
 }
 
-async function loadBudgetView() {
-  const [budgetAllocations, categories, subCategories] = await Promise.all([
-    cache.getAll('budgetAllocations'),
-    cache.getAll('categories'),
-    cache.getAll('subCategories')
-  ]);
-  const view = document.getElementById('budget-view');
-  populateCategoryOptions(document.getElementById('budget-category'), categories, 'Select a category');
-  await syncSubCategorySelect('budget-category', 'budget-subcategory');
+function shiftMonthValue(monthValue, offset) {
+  const [year, month] = monthValue.split('-').map(Number);
+  const shiftedDate = new Date(year, month - 1 + offset, 1);
 
-  if (!budgetAllocations.length) {
+  return buildLocalMonthValue(shiftedDate);
+}
+
+function formatMonthLabel(monthValue) {
+  const [year, month] = monthValue.split('-').map(Number);
+  const date = new Date(year, month - 1, 1);
+
+  return date.toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric'
+  });
+}
+
+function buildBudgetEntryKey(categoryId, subCategoryId = null) {
+  return `${categoryId}::${subCategoryId || 'root'}`;
+}
+
+function buildBudgetMonthEntryKey(month, categoryId, subCategoryId = null) {
+  return `${month}::${buildBudgetEntryKey(categoryId, subCategoryId)}`;
+}
+
+function buildBudgetEntryDefinitions(categories, subCategories, transactions = [], budgetAllocations = []) {
+  return sortItemsForDisplay(categories)
+    .filter(category => !category.offBudget)
+    .map(category => {
+      const visibleSubCategories = sortItemsForDisplay(
+        subCategories.filter(subCategory => subCategory.categoryId === category.id && !subCategory.offBudget)
+      );
+      const needsCategoryFallbackRow = visibleSubCategories.length && (
+        transactions.some(transaction => transaction.categoryId === category.id && !transaction.subCategoryId)
+        || budgetAllocations.some(allocation => allocation.categoryId === category.id && !allocation.subCategoryId)
+      );
+      const rows = visibleSubCategories.length
+        ? visibleSubCategories.map(subCategory => ({
+            entryKey: buildBudgetEntryKey(category.id, subCategory.id),
+            categoryId: category.id,
+            subCategoryId: subCategory.id,
+            categoryName: category.name,
+            subCategoryName: subCategory.name,
+            note: subCategory.note || '',
+            target: getSubCategoryTarget(subCategory),
+            recurring: getSubCategoryRecurring(subCategory),
+            isCategoryFallback: false
+          }))
+        : [{
+            entryKey: buildBudgetEntryKey(category.id, null),
+            categoryId: category.id,
+            subCategoryId: null,
+            categoryName: category.name,
+            subCategoryName: '',
+            note: category.note || '',
+            target: { type: '', amount: 0 },
+            recurring: { enabled: false, amount: 0, cadence: 'monthly' },
+            isCategoryFallback: true
+          }];
+
+      if (needsCategoryFallbackRow) {
+        rows.unshift({
+          entryKey: buildBudgetEntryKey(category.id, null),
+          categoryId: category.id,
+          subCategoryId: null,
+          categoryName: category.name,
+          subCategoryName: 'Category-Level Activity',
+          note: 'Legacy or uncategorized entries in this group',
+          target: { type: '', amount: 0 },
+          recurring: { enabled: false, amount: 0, cadence: 'monthly' },
+          isCategoryFallback: true
+        });
+      }
+
+      return {
+        id: category.id,
+        name: category.name,
+        note: category.note || '',
+        rows
+      };
+    })
+    .filter(group => group.rows.length);
+}
+
+function buildBudgetActivityLookup(transactions) {
+  return transactions.reduce((lookup, transaction) => {
+    if (!transaction.categoryId) {
+      return lookup;
+    }
+
+    const month = String(transaction.date || '').slice(0, 7);
+
+    if (!month) {
+      return lookup;
+    }
+
+    const key = buildBudgetMonthEntryKey(month, transaction.categoryId, transaction.subCategoryId || null);
+    lookup.set(key, (lookup.get(key) || 0) + Number(transaction.amount || 0));
+    return lookup;
+  }, new Map());
+}
+
+function buildSavedAllocationLookup(budgetAllocations) {
+  return budgetAllocations.reduce((lookup, allocation) => {
+    lookup.set(
+      buildBudgetMonthEntryKey(allocation.month, allocation.categoryId, allocation.subCategoryId || null),
+      allocation
+    );
+    return lookup;
+  }, new Map());
+}
+
+function getNearestPriorBudgetMonth(targetMonth, budgetAllocations) {
+  const priorMonths = Array.from(new Set(
+    budgetAllocations
+      .map(allocation => allocation.month)
+      .filter(month => month < targetMonth)
+  )).sort();
+
+  return priorMonths.length ? priorMonths[priorMonths.length - 1] : null;
+}
+
+function getBudgetPrefillAmount(row, sourceAllocation = null) {
+  if (Number(row.target.amount || 0) > 0) {
+    return Number(row.target.amount || 0);
+  }
+
+  return Number(sourceAllocation?.assigned || 0);
+}
+
+function buildBudgetDraftAllocations(context, month) {
+  const savedMonthRows = context.entries.flatMap(group => group.rows)
+    .map(row => {
+      const savedAllocation = context.savedAllocationLookup.get(
+        buildBudgetMonthEntryKey(month, row.categoryId, row.subCategoryId)
+      );
+
+      return [
+        row.entryKey,
+        {
+          categoryId: row.categoryId,
+          subCategoryId: row.subCategoryId,
+          assigned: Number(savedAllocation?.assigned || 0),
+          suggestedAssigned: 0,
+          note: String(savedAllocation?.note || '')
+        }
+      ];
+    });
+
+  const hasSavedMonthAllocations = savedMonthRows.some(([, draft]) => draft.assigned !== 0 || draft.note.trim());
+
+  if (hasSavedMonthAllocations) {
+    return {
+      draftAllocations: new Map(savedMonthRows),
+      draftSourceMonth: month,
+      draftSourceLabel: '',
+      isPrefilled: false
+    };
+  }
+
+  const sourceMonth = getNearestPriorBudgetMonth(month, context.budgetAllocations);
+  const hasTargetPrefill = context.entries
+    .flatMap(group => group.rows)
+    .some(row => Number(row.target.amount || 0) > 0);
+  const draftAllocations = new Map(context.entries.flatMap(group => group.rows).map(row => {
+    const sourceAllocation = sourceMonth
+      ? context.savedAllocationLookup.get(buildBudgetMonthEntryKey(sourceMonth, row.categoryId, row.subCategoryId))
+      : null;
+
+    return [
+      row.entryKey,
+      {
+        categoryId: row.categoryId,
+        subCategoryId: row.subCategoryId,
+        assigned: null,
+        suggestedAssigned: getBudgetPrefillAmount(row, sourceAllocation),
+        note: ''
+      }
+    ];
+  }));
+  const draftSourceLabel = hasTargetPrefill
+    ? 'category targets'
+    : sourceMonth
+      ? formatMonthLabel(sourceMonth)
+      : '';
+
+  return {
+    draftAllocations,
+    draftSourceMonth: sourceMonth,
+    draftSourceLabel,
+    isPrefilled: Boolean(draftSourceLabel)
+  };
+}
+
+function getAssignedAmountForEntry(entry, draftAllocations) {
+  return Number(draftAllocations.get(entry.entryKey)?.assigned || 0);
+}
+
+function getSuggestedAssignedForEntry(entry, draftAllocations) {
+  return Number(draftAllocations.get(entry.entryKey)?.suggestedAssigned || 0);
+}
+
+function getEffectiveAssignedForEntry(entry, draftAllocations) {
+  const draft = draftAllocations.get(entry.entryKey);
+
+  if (!draft) {
+    return 0;
+  }
+
+  if (draft.assigned === null || typeof draft.assigned === 'undefined') {
+    return Number(draft.suggestedAssigned || 0);
+  }
+
+  return Number(draft.assigned || 0);
+}
+
+function getNoteForEntry(entry, draftAllocations) {
+  return String(draftAllocations.get(entry.entryKey)?.note || '');
+}
+
+function getActivityAmountForEntry(context, month, entry) {
+  return Number(context.activityLookup.get(
+    buildBudgetMonthEntryKey(month, entry.categoryId, entry.subCategoryId)
+  ) || 0);
+}
+
+function getCarryoverAmountForEntry(context, month, entry) {
+  const relevantMonths = Array.from(new Set(
+    [
+      ...context.budgetAllocations.map(allocation => allocation.month),
+      ...context.transactions
+        .map(transaction => String(transaction.date || '').slice(0, 7))
+        .filter(Boolean)
+    ].filter(candidateMonth => candidateMonth < month)
+  )).sort();
+
+  return relevantMonths.reduce((sum, candidateMonth) => {
+    const allocation = context.savedAllocationLookup.get(
+      buildBudgetMonthEntryKey(candidateMonth, entry.categoryId, entry.subCategoryId)
+    );
+    const activity = getActivityAmountForEntry(context, candidateMonth, entry);
+
+    return sum + Number(allocation?.assigned || 0) + activity;
+  }, 0);
+}
+
+function buildBudgetPresentationModel(context, month, draftAllocations) {
+  const groups = context.entries.map(group => {
+    const rows = group.rows.map(entry => {
+      const savedAllocation = context.savedAllocationLookup.get(
+        buildBudgetMonthEntryKey(month, entry.categoryId, entry.subCategoryId)
+      );
+      const carryover = getCarryoverAmountForEntry(context, month, entry);
+      const committedAssigned = Number(savedAllocation?.assigned || 0);
+      const assigned = getEffectiveAssignedForEntry(entry, draftAllocations);
+      const suggestedAssigned = getSuggestedAssignedForEntry(entry, draftAllocations);
+      const monthlyNote = getNoteForEntry(entry, draftAllocations);
+      const activity = getActivityAmountForEntry(context, month, entry);
+      const available = carryover + assigned + activity;
+
+      return {
+        ...entry,
+        carryover,
+        committedAssigned,
+        assigned,
+        suggestedAssigned,
+        isSuggestedOnly: assigned === suggestedAssigned && getAssignedAmountForEntry(entry, draftAllocations) === 0 && suggestedAssigned > 0,
+        monthlyNote,
+        activity,
+        available
+      };
+    });
+    const totals = rows.reduce((sum, row) => ({
+      carryover: sum.carryover + row.carryover,
+      assigned: sum.assigned + row.committedAssigned,
+      activity: sum.activity + row.activity,
+      available: sum.available + row.available
+    }), {
+      carryover: 0,
+      assigned: 0,
+      activity: 0,
+      available: 0
+    });
+
+    return {
+      ...group,
+      rows,
+      totals
+    };
+  });
+
+  const selectedMonthSavedAssigned = groups.reduce((sum, group) => sum + group.totals.assigned, 0);
+
+  const totalAssignedAcrossSavedMonths = context.budgetAllocations.reduce(
+    (sum, allocation) => sum + Number(allocation.assigned || 0),
+    0
+  );
+  const assignedThisMonth = selectedMonthSavedAssigned;
+  const activityThisMonth = groups.reduce((sum, group) => sum + group.totals.activity, 0);
+  const reservedAssignedOutsideSelectedMonth = totalAssignedAcrossSavedMonths - selectedMonthSavedAssigned;
+  const availableToBudget = context.availableCash - reservedAssignedOutsideSelectedMonth;
+  const leftToAssign = availableToBudget - assignedThisMonth;
+
+  return {
+    groups,
+    summary: {
+      availableToBudget,
+      cashOnHand: context.availableCash,
+      assignedThisMonth,
+      activityThisMonth,
+      leftToAssign
+    }
+  };
+}
+
+function renderBudgetSummaryCards(summary) {
+  const container = document.getElementById('budget-summary-cards');
+  const remainingClass = summary.leftToAssign < 0 ? 'negative' : 'positive';
+  const remainingLabel = summary.leftToAssign < 0 ? 'Overbudget' : 'Left To Assign';
+
+  container.innerHTML = `
+    <article class="hero-card budget-cash-card">
+      <p class="hero-label">Available To Budget</p>
+      <h3 id="available-to-budget">${formatCurrency(summary.availableToBudget)}</h3>
+      <p class="hero-copy">Current cash after reserving assigned dollars from every other saved month.</p>
+    </article>
+    <article class="hero-card">
+      <p class="hero-label">Assigned</p>
+      <h3>${formatCurrency(summary.assignedThisMonth)}</h3>
+      <p class="hero-copy">Money assigned in ${escapeHtml(formatMonthLabel(budgetState.selectedMonth))}.</p>
+    </article>
+    <article class="hero-card">
+      <p class="hero-label">Activity</p>
+      <h3>${formatCurrency(summary.activityThisMonth)}</h3>
+      <p class="hero-copy">Transaction-driven inflow and outflow for the selected month.</p>
+    </article>
+    <article class="hero-card">
+      <p class="hero-label">${remainingLabel}</p>
+      <h3 class="amount ${remainingClass}">${formatCurrency(summary.leftToAssign)}</h3>
+      <p class="hero-copy">${summary.leftToAssign < 0 ? 'You have assigned more cash than is currently available.' : 'Every remaining dollar is still ready to be assigned.'}</p>
+    </article>
+  `;
+}
+
+function renderBudgetWorkspaceGrid(model) {
+  const view = document.getElementById('budget-view');
+
+  if (!model.groups.length) {
     view.innerHTML = `
       <div class="empty-state">
-        <h4>No allocations yet</h4>
-        <p>Create a monthly allocation by choosing a category and, if needed, one of its matching subcategories.</p>
+        <h4>No budgetable categories yet</h4>
+        <p>Add an on-budget category or subcategory first so the monthly budget workspace has somewhere to assign money.</p>
       </div>
     `;
     return;
   }
 
-  const categoryMap = new Map(categories.map(category => [category.id, category]));
-  const subCategoryMap = new Map(subCategories.map(subCategory => [subCategory.id, subCategory]));
+  view.innerHTML = `
+    <div class="budget-groups">
+      ${model.groups.map(group => `
+        <article class="budget-group-card">
+          <div class="budget-group-header">
+            <div>
+              <h4>${escapeHtml(group.name)}</h4>
+              <p>${escapeHtml(group.note || `${group.rows.length} ${group.rows.length === 1 ? 'budget row' : 'budget rows'}`)}</p>
+            </div>
+            <div class="budget-group-totals">
+              <span class="pill" data-category-assigned="${group.id}">Assigned ${formatCurrency(group.totals.assigned)}</span>
+              <span class="pill ${group.totals.activity < 0 ? 'warn' : ''}" data-category-activity="${group.id}">Activity ${formatCurrency(group.totals.activity)}</span>
+              <span class="pill ${group.totals.available < 0 ? 'warn' : ''}" data-category-total="${group.id}">${formatCurrency(group.totals.available)} Remaining</span>
+            </div>
+          </div>
+          <div class="budget-row budget-row-head">
+            <div>Line</div>
+            <div>Carryover</div>
+            <div>Allocate</div>
+            <div>Activity</div>
+            <div>Remaining</div>
+            <div>Note</div>
+          </div>
+          ${group.rows.map(row => `
+            <div class="budget-row-stack">
+              <div class="budget-row" data-entry-key="${row.entryKey}" data-category-id="${group.id}">
+                <div class="budget-line-copy">
+                  <strong>${escapeHtml(row.subCategoryName || row.categoryName)}</strong>
+                  <p>${escapeHtml(
+                    [
+                      row.target.type ? `${TARGET_TYPE_LABELS[row.target.type]} target` : '',
+                      row.target.amount ? formatCurrency(row.target.amount) : '',
+                      row.recurring.enabled ? `Recurring ${row.recurring.cadence} ${formatCurrency(row.recurring.amount)}` : '',
+                      row.note
+                    ].filter(Boolean).join(' | ') || (row.isCategoryFallback ? 'Category-level budget row' : 'Flexible')
+                  )}</p>
+                </div>
+                <div class="amount budget-row-carryover">${formatCurrency(row.carryover)}</div>
+                <div class="budget-assigned-field">
+                  <div class="budget-amount-input-shell">
+                    <span class="budget-amount-prefix" aria-hidden="true">$</span>
+                    <input
+                    type="number"
+                    class="budget-assigned-input"
+                    data-entry-key="${row.entryKey}"
+                    aria-label="Amount to allocate for ${escapeHtml(row.subCategoryName || row.categoryName)}"
+                    value="${escapeHtml(String(
+                      Number.isFinite(getAssignedAmountForEntry(row, budgetState.draftAllocations))
+                        && getAssignedAmountForEntry(row, budgetState.draftAllocations) !== 0
+                        ? getAssignedAmountForEntry(row, budgetState.draftAllocations)
+                        : ''
+                    ))}"
+                    step="0.01"
+                    placeholder="${escapeHtml(row.suggestedAssigned ? String(row.suggestedAssigned) : '0.00')}"
+                  >
+                </div>
+              </div>
+                <div class="amount ${row.activity < 0 ? 'negative' : 'positive'} budget-row-activity">${formatCurrency(row.activity)}</div>
+                <div class="amount ${row.available < 0 ? 'negative' : 'positive'} budget-row-available">${formatCurrency(row.available)}</div>
+                <div class="budget-note-action">
+                  <button
+                    type="button"
+                    class="icon-button ${row.monthlyNote ? '' : 'ghost'} ${budgetState.expandedNoteEntryKey === row.entryKey ? 'is-active' : ''}"
+                    data-note-toggle-entry-key="${row.entryKey}"
+                    aria-label="${row.monthlyNote ? 'Edit monthly note' : 'Add monthly note'}"
+                    title="${row.monthlyNote ? 'Edit monthly note' : 'Add monthly note'}"
+                  >
+                    ${getActionIcon('note')}
+                  </button>
+                </div>
+              </div>
+              ${budgetState.expandedNoteEntryKey === row.entryKey ? `
+                <div class="budget-note-editor" data-note-editor-entry-key="${row.entryKey}">
+                  <div class="budget-note-editor-copy">
+                    <strong>Monthly note</strong>
+                    <p>This note is saved only for ${escapeHtml(formatMonthLabel(budgetState.selectedMonth))}.</p>
+                  </div>
+                  <textarea
+                    class="budget-note-textarea"
+                    data-note-entry-key="${row.entryKey}"
+                    aria-label="Monthly note for ${escapeHtml(row.subCategoryName || row.categoryName)}"
+                    rows="3"
+                    placeholder="Add a monthly note for this row"
+                  >${escapeHtml(row.monthlyNote)}</textarea>
+                </div>
+              ` : ''}
+            </div>
+          `).join('')}
+        </article>
+      `).join('')}
+    </div>
+  `;
+}
 
-  view.innerHTML = budgetAllocations
-    .slice()
-    .sort((left, right) => {
-      if (left.month === right.month) {
-        return buildCategoryPath(categoryMap.get(left.categoryId), subCategoryMap.get(left.subCategoryId)).localeCompare(
-          buildCategoryPath(categoryMap.get(right.categoryId), subCategoryMap.get(right.subCategoryId))
-        );
+function updateBudgetDraftHint() {
+  const hint = document.getElementById('budget-draft-hint');
+
+  if (!budgetState.context) {
+    hint.textContent = 'Monthly budget drafts stay editable until you save them.';
+    return;
+  }
+
+  if (budgetState.isPrefilled && budgetState.draftSourceLabel) {
+    hint.textContent = `Prefilled from ${budgetState.draftSourceLabel}. Review the month, then save when it looks right.`;
+    return;
+  }
+
+  hint.textContent = 'Monthly budget drafts stay editable until you save them.';
+}
+
+function renderBudgetWorkspace() {
+  if (!budgetState.context) {
+    return;
+  }
+
+  document.getElementById('budget-month-label').textContent = formatMonthLabel(budgetState.selectedMonth);
+  updateBudgetDraftHint();
+
+  const model = buildBudgetPresentationModel(
+    budgetState.context,
+    budgetState.selectedMonth,
+    budgetState.draftAllocations
+  );
+
+  renderBudgetSummaryCards(model.summary);
+  renderBudgetWorkspaceGrid(model);
+}
+
+function refreshBudgetComputedDisplay() {
+  if (!budgetState.context) {
+    return;
+  }
+
+  const model = buildBudgetPresentationModel(
+    budgetState.context,
+    budgetState.selectedMonth,
+    budgetState.draftAllocations
+  );
+
+  renderBudgetSummaryCards(model.summary);
+  model.groups.forEach(group => {
+    const categoryAssigned = document.querySelector(`[data-category-assigned="${group.id}"]`);
+    const categoryActivity = document.querySelector(`[data-category-activity="${group.id}"]`);
+    const categoryTotal = document.querySelector(`[data-category-total="${group.id}"]`);
+
+    if (categoryAssigned) {
+      categoryAssigned.textContent = `Assigned ${formatCurrency(group.totals.assigned)}`;
+    }
+
+    if (categoryActivity) {
+      categoryActivity.textContent = `Activity ${formatCurrency(group.totals.activity)}`;
+      categoryActivity.classList.toggle('warn', group.totals.activity < 0);
+    }
+
+    if (categoryTotal) {
+      categoryTotal.textContent = `${formatCurrency(group.totals.available)} Remaining`;
+      categoryTotal.classList.toggle('warn', group.totals.available < 0);
+    }
+
+    group.rows.forEach(row => {
+      const rowElement = document.querySelector(`[data-entry-key="${row.entryKey}"]`);
+
+      if (!rowElement) {
+        return;
       }
 
-      return right.month.localeCompare(left.month);
-    })
-    .map(allocation => {
-      const category = categoryMap.get(allocation.categoryId);
-      const subCategory = allocation.subCategoryId ? subCategoryMap.get(allocation.subCategoryId) : null;
+      const activityElement = rowElement.querySelector('.budget-row-activity');
+      const availableElement = rowElement.querySelector('.budget-row-available');
+      const carryoverElement = rowElement.querySelector('.budget-row-carryover');
 
-      return `
-        <article class="data-card">
-          <div class="data-card-header">
-            <div class="data-card-copy">
-              <h4>${escapeHtml(allocation.month)}</h4>
-              <p>${escapeHtml(buildCategoryPath(category, subCategory))}</p>
-            </div>
-            <div class="pill">${formatCurrency(allocation.balance)} available</div>
-          </div>
-          <div class="data-card-footer">
-            <p>Assigned ${formatCurrency(allocation.assigned)}</p>
-            <p>Activity ${formatCurrency(allocation.activity)}</p>
-          </div>
-        </article>
-      `;
+      if (carryoverElement) {
+        carryoverElement.textContent = formatCurrency(row.carryover);
+      }
+
+      if (activityElement) {
+        activityElement.textContent = formatCurrency(row.activity);
+        activityElement.classList.toggle('negative', row.activity < 0);
+        activityElement.classList.toggle('positive', row.activity >= 0);
+      }
+
+      if (availableElement) {
+        availableElement.textContent = formatCurrency(row.available);
+        availableElement.classList.toggle('negative', row.available < 0);
+        availableElement.classList.toggle('positive', row.available >= 0);
+      }
+    });
+  });
+}
+
+function updateBudgetDraftEntry(entryKey, updates) {
+  const currentDraft = budgetState.draftAllocations.get(entryKey);
+
+  if (!currentDraft) {
+    return;
+  }
+
+  budgetState.draftAllocations.set(entryKey, {
+    ...currentDraft,
+    ...updates
+  });
+}
+
+function materializeBudgetPrefillSuggestions() {
+  let appliedCount = 0;
+
+  budgetState.draftAllocations.forEach((draft, entryKey) => {
+    if ((draft.assigned === null || typeof draft.assigned === 'undefined') && Number(draft.suggestedAssigned || 0) > 0) {
+      budgetState.draftAllocations.set(entryKey, {
+        ...draft,
+        assigned: Number(draft.suggestedAssigned || 0)
+      });
+      appliedCount += 1;
+    }
+  });
+
+  return appliedCount;
+}
+
+function resetBudgetDraftForSelectedMonth() {
+  if (!budgetState.context) {
+    return;
+  }
+
+  const nextDraftState = buildBudgetDraftAllocations(budgetState.context, budgetState.selectedMonth);
+  budgetState.draftAllocations = nextDraftState.draftAllocations;
+  budgetState.draftSourceMonth = nextDraftState.draftSourceMonth;
+  budgetState.draftSourceLabel = nextDraftState.draftSourceLabel;
+  budgetState.isPrefilled = nextDraftState.isPrefilled;
+  renderBudgetWorkspace();
+}
+
+function toggleBudgetNoteEditor(entryKey) {
+  budgetState.expandedNoteEntryKey = budgetState.expandedNoteEntryKey === entryKey
+    ? null
+    : entryKey;
+  renderBudgetWorkspace();
+}
+
+function focusBudgetAssignedInput(currentInput, direction = 1) {
+  const inputs = Array.from(document.querySelectorAll('.budget-assigned-input'))
+    .filter(input => !input.disabled && input.offsetParent !== null);
+  const currentIndex = inputs.indexOf(currentInput);
+
+  if (currentIndex === -1) {
+    return;
+  }
+
+  const nextInput = inputs[currentIndex + direction];
+
+  if (!nextInput) {
+    return;
+  }
+
+  nextInput.focus();
+  nextInput.select();
+}
+
+function copyBudgetFromPreviousMonth() {
+  if (!budgetState.context) {
+    return false;
+  }
+
+  const sourceMonth = getNearestPriorBudgetMonth(budgetState.selectedMonth, budgetState.context.budgetAllocations);
+
+  if (!sourceMonth) {
+    return false;
+  }
+
+  budgetState.draftAllocations = new Map(budgetState.context.entries.flatMap(group => group.rows).map(row => {
+    const sourceAllocation = budgetState.context.savedAllocationLookup.get(
+      buildBudgetMonthEntryKey(sourceMonth, row.categoryId, row.subCategoryId)
+    );
+
+    return [
+      row.entryKey,
+      {
+        categoryId: row.categoryId,
+        subCategoryId: row.subCategoryId,
+        assigned: Number(sourceAllocation?.assigned || 0),
+        suggestedAssigned: 0,
+        note: ''
+      }
+    ];
+  }));
+  budgetState.draftSourceMonth = sourceMonth;
+  budgetState.draftSourceLabel = formatMonthLabel(sourceMonth);
+  budgetState.isPrefilled = true;
+  renderBudgetWorkspace();
+  return true;
+}
+
+function applyRecurringBudgetDefaults() {
+  if (!budgetState.context) {
+    return 0;
+  }
+
+  let appliedCount = 0;
+  budgetState.context.entries.forEach(group => {
+    group.rows.forEach(row => {
+      if (!row.recurring.enabled || row.recurring.cadence !== 'monthly') {
+        return;
+      }
+
+      updateBudgetDraftEntry(row.entryKey, { assigned: row.recurring.amount });
+      appliedCount += 1;
+    });
+  });
+  renderBudgetWorkspace();
+  return appliedCount;
+}
+
+async function saveBudgetMonth() {
+  if (!budgetState.context) {
+    return;
+  }
+
+  const existingAllocations = budgetState.context.budgetAllocations
+    .filter(allocation => allocation.month === budgetState.selectedMonth);
+
+  await Promise.all(existingAllocations.map(allocation => cache.remove('budgetAllocations', { id: allocation.id })));
+
+  const rows = budgetState.context.entries.flatMap(group => group.rows);
+  const allocationsToInsert = rows
+    .map(row => {
+      const assigned = getAssignedAmountForEntry(row, budgetState.draftAllocations);
+      const note = getNoteForEntry(row, budgetState.draftAllocations).trim();
+      const activity = getActivityAmountForEntry(budgetState.context, budgetState.selectedMonth, row);
+
+      if (assigned === 0 && !note) {
+        return null;
+      }
+
+      return new BudgetAllocation(
+        budgetState.selectedMonth,
+        row.categoryId,
+        row.subCategoryId,
+        assigned,
+        activity,
+        note
+      );
     })
-    .join('');
+    .filter(Boolean);
+
+  await Promise.all(allocationsToInsert.map(allocation => cache.insert('budgetAllocations', allocation)));
+  await loadBudgetView({ month: budgetState.selectedMonth });
+}
+
+async function loadBudgetView(options = {}) {
+  const targetMonth = options.month || budgetState.selectedMonth || getCurrentMonthValue();
+  const [accounts, categories, subCategories, transactions, budgetAllocations] = await Promise.all([
+    cache.getAll('accounts'),
+    cache.getAll('categories'),
+    cache.getAll('subCategories'),
+    cache.getAll('transactions'),
+    cache.getAll('budgetAllocations')
+  ]);
+  const availableCash = accounts
+    .filter(account => !account.offBudget)
+    .reduce((sum, account) => sum + Number(account.currentBalance || 0), 0);
+  const entries = buildBudgetEntryDefinitions(categories, subCategories, transactions, budgetAllocations);
+
+  budgetState.selectedMonth = targetMonth;
+  budgetState.loadedMonth = targetMonth;
+  budgetState.context = {
+    availableCash,
+    budgetAllocations,
+    entries,
+    transactions,
+    savedAllocationLookup: buildSavedAllocationLookup(budgetAllocations),
+    activityLookup: buildBudgetActivityLookup(transactions)
+  };
+
+  const nextDraftState = buildBudgetDraftAllocations(budgetState.context, targetMonth);
+  budgetState.draftAllocations = nextDraftState.draftAllocations;
+  budgetState.draftSourceMonth = nextDraftState.draftSourceMonth;
+  budgetState.draftSourceLabel = nextDraftState.draftSourceLabel;
+  budgetState.isPrefilled = nextDraftState.isPrefilled;
+
+  renderBudgetWorkspace();
 }
 
 function updateSectionHeader(sectionId) {
@@ -355,11 +1046,8 @@ async function refreshDashboard() {
 function updateDashboardStats(accounts, categories, subCategories) {
   if (accounts) {
     const totalCash = accounts.reduce((sum, acc) => sum + Number(acc.currentBalance || 0), 0);
-    const onBudgetAccounts = accounts.filter(acc => !acc.offBudget);
-    const availableToBudget = onBudgetAccounts.reduce((sum, acc) => sum + Number(acc.currentBalance || 0), 0);
 
     document.getElementById('total-cash').textContent = formatCurrency(totalCash);
-    document.getElementById('available-to-budget').textContent = formatCurrency(availableToBudget);
     document.getElementById('account-count').textContent = accounts.length.toString();
   }
 
@@ -434,6 +1122,14 @@ function getActionIcon(type) {
     `;
   }
 
+  if (type === 'note') {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 3h10l4 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm9 1.5V8h3.5L14 4.5ZM7 11h10v1.8H7V11Zm0 4h10v1.8H7V15Z"></path>
+      </svg>
+    `;
+  }
+
   return `
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="m3 17.25 9.88-9.88 3.75 3.75L6.75 21H3v-3.75Zm11.06-11.06 1.41-1.41a2 2 0 0 1 2.83 0l.94.94a2 2 0 0 1 0 2.83l-1.41 1.41-3.77-3.78Z"></path>
@@ -454,6 +1150,20 @@ function resetAccountForm() {
   document.getElementById('account-form').reset();
   document.getElementById('acc-id').value = '';
   setAccountFormMode(false);
+}
+
+function readRecurringFormValues() {
+  return {
+    enabled: document.getElementById('cat-recurring-enabled').checked,
+    amount: parseFloat(document.getElementById('cat-recurring-amount').value) || 0,
+    cadence: document.getElementById('cat-recurring-cadence').value || 'monthly'
+  };
+}
+
+function populateRecurringFormValues(recurring = {}) {
+  document.getElementById('cat-recurring-enabled').checked = Boolean(recurring.enabled);
+  document.getElementById('cat-recurring-amount').value = Number(recurring.amount || 0) || '';
+  document.getElementById('cat-recurring-cadence').value = recurring.cadence || 'monthly';
 }
 
 function setCategoryFormMode(mode, context = {}) {
@@ -528,6 +1238,7 @@ function resetCategoryForm() {
   document.getElementById('cat-name').readOnly = false;
   document.getElementById('subcat-fields').classList.remove('hidden');
   document.getElementById('subcat-name').required = false;
+  populateRecurringFormValues({ enabled: false, amount: 0, cadence: 'monthly' });
   setCategoryFormMode('create-category');
 }
 
@@ -781,11 +1492,35 @@ function getSubCategoryMeta(subCategory) {
     segments.push(formatCurrency(target.amount));
   }
 
+  const recurringLabel = getSubCategoryRecurringLabel(subCategory);
+
+  if (recurringLabel) {
+    segments.push(recurringLabel);
+  }
+
   if (subCategory.note) {
     segments.push(subCategory.note);
   }
 
   return segments.join(' | ') || 'Flexible';
+}
+
+function getSubCategoryRecurring(subCategory) {
+  return {
+    enabled: Boolean(subCategory.recurringEnabled),
+    amount: Number(subCategory.recurringAmount || 0),
+    cadence: subCategory.recurringCadence || 'monthly'
+  };
+}
+
+function getSubCategoryRecurringLabel(subCategory) {
+  const recurring = getSubCategoryRecurring(subCategory);
+
+  if (!recurring.enabled) {
+    return '';
+  }
+
+  return `Recurring ${recurring.cadence} ${formatCurrency(recurring.amount)}`;
 }
 
 function buildSelectOptions(items, selectedValue, placeholder) {
@@ -1494,6 +2229,7 @@ async function editCategory(categoryId) {
   document.getElementById('subcat-name').value = '';
   document.getElementById('cat-goal-type').value = '';
   document.getElementById('cat-goal-amount').value = '';
+  populateRecurringFormValues({ enabled: false, amount: 0, cadence: 'monthly' });
   document.getElementById('cat-note').value = category.note || '';
   document.getElementById('cat-off-budget').checked = Boolean(category.offBudget);
   setCategoryFormMode('edit-category');
@@ -1516,6 +2252,7 @@ async function startAddSubCategory(categoryId) {
   document.getElementById('subcat-name').value = '';
   document.getElementById('cat-goal-type').value = '';
   document.getElementById('cat-goal-amount').value = '';
+  populateRecurringFormValues({ enabled: false, amount: 0, cadence: 'monthly' });
   document.getElementById('cat-note').value = '';
   document.getElementById('cat-off-budget').checked = Boolean(category.offBudget);
   setCategoryFormMode('add-subcategory', { categoryName: category.name });
@@ -1542,6 +2279,7 @@ async function editSubCategory(subCategoryId) {
   document.getElementById('subcat-name').value = subCategory.name || '';
   document.getElementById('cat-goal-type').value = getSubCategoryTarget(subCategory).type;
   document.getElementById('cat-goal-amount').value = Number(subCategory.targetAmount ?? subCategory.goalAmount ?? 0) || '';
+  populateRecurringFormValues(getSubCategoryRecurring(subCategory));
   document.getElementById('cat-note').value = subCategory.note || '';
   document.getElementById('cat-off-budget').checked = Boolean(subCategory.offBudget);
   setCategoryFormMode('edit-subcategory', {
@@ -1657,7 +2395,7 @@ window.onload = () => {
   window.cancelTransactionEdit = cancelTransactionEdit;
   window.saveTransactionEdit = saveTransactionEdit;
   window.confirmDeleteTransaction = confirmDeleteTransaction;
-  document.getElementById('budget-month').value = getCurrentMonthValue();
+  budgetState.selectedMonth = getCurrentMonthValue();
   syncTransactionDerivedState()
     .then(async () => {
       showSection('accounts');
@@ -1715,6 +2453,7 @@ window.onload = () => {
     const subCategoryName = document.getElementById('subcat-name').value.trim();
     const targetType = normalizeTargetType(document.getElementById('cat-goal-type').value);
     const targetAmount = parseFloat(document.getElementById('cat-goal-amount').value) || 0;
+    const recurring = readRecurringFormValues();
     const note = document.getElementById('cat-note').value;
     const offBudget = document.getElementById('cat-off-budget').checked;
 
@@ -1735,7 +2474,7 @@ window.onload = () => {
 
     if (mode === 'add-subcategory') {
       const sortOrder = await getNextGroupedSortOrder('subCategories', 'categoryId', categoryId);
-      const subCategory = new SubCategory(categoryId, subCategoryName, targetType, targetAmount, note, offBudget, sortOrder);
+      const subCategory = new SubCategory(categoryId, subCategoryName, targetType, targetAmount, note, offBudget, sortOrder, recurring);
       await cache.insert('subCategories', subCategory);
       await loadCategories();
       await loadTransactions();
@@ -1752,6 +2491,9 @@ window.onload = () => {
         targetAmount,
         goalType: targetType,
         goalAmount: targetAmount,
+        recurringEnabled: recurring.enabled,
+        recurringAmount: recurring.amount,
+        recurringCadence: recurring.cadence,
         note,
         offBudget
       } });
@@ -1768,7 +2510,7 @@ window.onload = () => {
     const savedCategory = await cache.insert('categories', category);
 
     if (subCategoryName) {
-      const subCategory = new SubCategory(savedCategory.id, subCategoryName, targetType, targetAmount, note, offBudget, null);
+      const subCategory = new SubCategory(savedCategory.id, subCategoryName, targetType, targetAmount, note, offBudget, null, recurring);
       await cache.insert('subCategories', subCategory);
     }
 
@@ -1791,28 +2533,89 @@ window.onload = () => {
   document.getElementById('transaction-import-button').addEventListener('click', async () => {
     await importTransactionsFromCsv();
   });
-  document.getElementById('budget-category').addEventListener('change', async () => {
-    await syncSubCategorySelect('budget-category', 'budget-subcategory');
+  document.getElementById('budget-month-prev').addEventListener('click', async () => {
+    budgetState.selectedMonth = shiftMonthValue(budgetState.selectedMonth || getCurrentMonthValue(), -1);
+    await loadBudgetView({ month: budgetState.selectedMonth });
   });
-  document.getElementById('budget-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
+  document.getElementById('budget-month-next').addEventListener('click', async () => {
+    budgetState.selectedMonth = shiftMonthValue(budgetState.selectedMonth || getCurrentMonthValue(), 1);
+    await loadBudgetView({ month: budgetState.selectedMonth });
+  });
+  document.getElementById('budget-month-current').addEventListener('click', async () => {
+    budgetState.selectedMonth = getCurrentMonthValue();
+    await loadBudgetView({ month: budgetState.selectedMonth });
+  });
+  document.getElementById('budget-copy-previous').addEventListener('click', async () => {
+    if (!copyBudgetFromPreviousMonth()) {
+      setStatus('No previous saved month was found to copy.');
+      return;
+    }
 
-    try {
-      const month = document.getElementById('budget-month').value;
-      const categoryId = document.getElementById('budget-category').value;
-      const subCategoryId = document.getElementById('budget-subcategory').value;
-      const assigned = parseFloat(document.getElementById('budget-assigned').value);
-      const activity = parseFloat(document.getElementById('budget-activity').value) || 0;
-      const matchingSubCategory = await resolveValidatedSubCategory(categoryId, subCategoryId);
-      const budgetAllocation = new BudgetAllocation(month, categoryId, matchingSubCategory?.id || null, assigned, activity);
+    setStatus(`Copied assigned amounts into ${formatMonthLabel(budgetState.selectedMonth)}.`);
+  });
+  document.getElementById('budget-apply-recurring').addEventListener('click', async () => {
+    const appliedCount = applyRecurringBudgetDefaults();
 
-      await cache.insert('budgetAllocations', budgetAllocation);
-      e.target.reset();
-      document.getElementById('budget-month').value = getCurrentMonthValue();
-      await loadBudgetView();
-      setStatus(`Saved allocation for ${month}`);
-    } catch (error) {
-      setStatus(error.message);
+    if (!appliedCount) {
+      setStatus('No monthly recurring rules were available for this budget.');
+      return;
+    }
+
+    setStatus(`Applied ${appliedCount} recurring budget amount${appliedCount === 1 ? '' : 's'}.`);
+  });
+  document.getElementById('budget-auto-apply').addEventListener('click', async () => {
+    materializeBudgetPrefillSuggestions();
+    await saveBudgetMonth();
+    setStatus(`Saved ${formatMonthLabel(budgetState.selectedMonth)} after applying the current draft.`);
+  });
+  document.getElementById('budget-reset-draft').addEventListener('click', () => {
+    resetBudgetDraftForSelectedMonth();
+    setStatus(`Reset the draft for ${formatMonthLabel(budgetState.selectedMonth)}.`);
+  });
+  document.getElementById('budget-save-month').addEventListener('click', async () => {
+    await saveBudgetMonth();
+    setStatus(`Saved the budget for ${formatMonthLabel(budgetState.selectedMonth)}.`);
+  });
+  document.getElementById('budget-view').addEventListener('click', (e) => {
+    const noteToggleButton = e.target.closest('[data-note-toggle-entry-key]');
+
+    if (!noteToggleButton) {
+      return;
+    }
+
+    toggleBudgetNoteEditor(noteToggleButton.dataset.noteToggleEntryKey);
+  });
+  document.getElementById('budget-view').addEventListener('keydown', (e) => {
+    if (!e.target.classList.contains('budget-assigned-input')) {
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      focusBudgetAssignedInput(e.target, 1);
+      return;
+    }
+
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      focusBudgetAssignedInput(e.target, e.shiftKey ? -1 : 1);
+    }
+  });
+  document.getElementById('budget-view').addEventListener('input', (e) => {
+    if (e.target.classList.contains('budget-assigned-input')) {
+      updateBudgetDraftEntry(
+        e.target.dataset.entryKey,
+        { assigned: e.target.value === '' ? null : (parseFloat(e.target.value) || 0) }
+      );
+      refreshBudgetComputedDisplay();
+      return;
+    }
+
+    if (e.target.classList.contains('budget-note-textarea')) {
+      updateBudgetDraftEntry(
+        e.target.dataset.noteEntryKey,
+        { note: e.target.value }
+      );
     }
   });
 };
