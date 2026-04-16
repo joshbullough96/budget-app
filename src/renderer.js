@@ -686,14 +686,14 @@ function renderBudgetMonthGrid(month, model, draftMeta, isSelected = false) {
           ${model.groups.map(group => `
             <article class="budget-group-card">
               <div class="budget-group-header">
-                <div>
+                <div class="budget-group-copy">
                   <h4>${escapeHtml(group.name)}</h4>
                   <p>${escapeHtml(group.note || `${group.rows.length} ${group.rows.length === 1 ? 'budget row' : 'budget rows'}`)}</p>
-                </div>
-                <div class="budget-group-totals">
-                  <span class="pill" data-category-assigned="${month}::${group.id}">Assigned ${formatCurrency(group.totals.assigned)}</span>
-                  <span class="pill ${group.totals.activity < 0 ? 'warn' : ''}" data-category-activity="${month}::${group.id}">Activity ${formatCurrency(group.totals.activity)}</span>
-                  <span class="pill ${group.totals.available < 0 ? 'warn' : ''}" data-category-total="${month}::${group.id}">${formatCurrency(group.totals.available)} Remaining</span>
+                  <div class="budget-group-totals">
+                    <span class="pill" data-category-assigned="${month}::${group.id}">Assigned ${formatCurrency(group.totals.assigned)}</span>
+                    <span class="pill ${group.totals.activity < 0 ? 'warn' : ''}" data-category-activity="${month}::${group.id}">Activity ${formatCurrency(group.totals.activity)}</span>
+                    <span class="pill ${group.totals.available < 0 ? 'warn' : ''}" data-category-total="${month}::${group.id}">Remaining ${formatCurrency(group.totals.available)}</span>
+                  </div>
                 </div>
               </div>
               <div class="budget-row budget-row-head">
@@ -708,7 +708,9 @@ function renderBudgetMonthGrid(month, model, draftMeta, isSelected = false) {
                 <div class="budget-row-stack">
                   <div class="budget-row" data-budget-row-key="${month}::${row.entryKey}" data-entry-key="${row.entryKey}" data-month="${month}" data-category-id="${group.id}">
                     <div class="budget-line-copy">
-                      <strong>${escapeHtml(row.subCategoryName || row.categoryName)}</strong>
+                      <div class="budget-line-main">
+                        <strong>${escapeHtml(row.subCategoryName || row.categoryName)}</strong>
+                      </div>
                       <p>${escapeHtml(
                         [
                           row.target.type ? `${TARGET_TYPE_LABELS[row.target.type]} target` : '',
@@ -884,7 +886,7 @@ function refreshBudgetComputedDisplay() {
       }
 
       if (categoryTotal) {
-        categoryTotal.textContent = `${formatCurrency(group.totals.available)} Remaining`;
+        categoryTotal.textContent = `Remaining ${formatCurrency(group.totals.available)}`;
         categoryTotal.classList.toggle('warn', group.totals.available < 0);
       }
 
