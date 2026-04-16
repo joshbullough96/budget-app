@@ -668,114 +668,115 @@ function renderBudgetSummaryCards(summary, monthLabel) {
   `;
 }
 
-function renderBudgetMonthGrid(month, model, draftMeta) {
+function renderBudgetMonthGrid(month, model, draftMeta, isSelected = false) {
   return `
-    <section class="budget-month-column">
-      <div class="budget-month-column-header">
-        <div>
-          <p class="eyebrow">Budget Month</p>
-          <h4>${escapeHtml(formatMonthLabel(month))}</h4>
+    <div class="budget-month-shell ${isSelected ? 'is-selected' : ''}" ${isSelected ? 'data-selected-budget-month="true"' : ''}>
+      <section class="budget-month-column">
+        <div class="budget-month-column-header">
+          <div>
+            <h4>${escapeHtml(formatMonthLabel(month))}</h4>
+          </div>
+          <p class="budget-month-column-hint">${escapeHtml(
+            draftMeta.isPrefilled && draftMeta.draftSourceLabel
+              ? `Prefilled from ${draftMeta.draftSourceLabel}`
+              : 'Monthly draft ready'
+          )}</p>
         </div>
-        <p class="budget-month-column-hint">${escapeHtml(
-          draftMeta.isPrefilled && draftMeta.draftSourceLabel
-            ? `Prefilled from ${draftMeta.draftSourceLabel}`
-            : 'Monthly draft ready'
-        )}</p>
-      </div>
-      <div class="budget-groups">
-        ${model.groups.map(group => `
-          <article class="budget-group-card">
-            <div class="budget-group-header">
-              <div>
-                <h4>${escapeHtml(group.name)}</h4>
-                <p>${escapeHtml(group.note || `${group.rows.length} ${group.rows.length === 1 ? 'budget row' : 'budget rows'}`)}</p>
-              </div>
-              <div class="budget-group-totals">
-                <span class="pill" data-category-assigned="${month}::${group.id}">Assigned ${formatCurrency(group.totals.assigned)}</span>
-                <span class="pill ${group.totals.activity < 0 ? 'warn' : ''}" data-category-activity="${month}::${group.id}">Activity ${formatCurrency(group.totals.activity)}</span>
-                <span class="pill ${group.totals.available < 0 ? 'warn' : ''}" data-category-total="${month}::${group.id}">${formatCurrency(group.totals.available)} Remaining</span>
-              </div>
-            </div>
-            <div class="budget-row budget-row-head">
-              <div>Line</div>
-              <div>Carryover</div>
-              <div>Allocate</div>
-              <div>Activity</div>
-              <div>Remaining</div>
-              <div>Note</div>
-            </div>
-            ${model.groups.length ? group.rows.map(row => `
-              <div class="budget-row-stack">
-                <div class="budget-row" data-budget-row-key="${month}::${row.entryKey}" data-entry-key="${row.entryKey}" data-month="${month}" data-category-id="${group.id}">
-                  <div class="budget-line-copy">
-                    <strong>${escapeHtml(row.subCategoryName || row.categoryName)}</strong>
-                    <p>${escapeHtml(
-                      [
-                        row.target.type ? `${TARGET_TYPE_LABELS[row.target.type]} target` : '',
-                        row.target.amount ? formatCurrency(row.target.amount) : '',
-                        row.recurring.enabled ? `Recurring ${row.recurring.cadence} ${formatCurrency(row.recurring.amount)}` : '',
-                        row.note
-                      ].filter(Boolean).join(' | ') || (row.isCategoryFallback ? 'Category-level budget row' : 'Flexible')
-                    )}</p>
-                  </div>
-                  <div class="amount budget-row-carryover">${formatCurrency(row.carryover)}</div>
-                  <div class="budget-assigned-field">
-                    <div class="budget-amount-input-shell">
-                      <span class="budget-amount-prefix" aria-hidden="true">$</span>
-                      <input
-                        type="number"
-                        class="budget-assigned-input"
-                        data-entry-key="${row.entryKey}"
-                        data-month="${month}"
-                        aria-label="Amount to allocate for ${escapeHtml(row.subCategoryName || row.categoryName)} in ${escapeHtml(formatMonthLabel(month))}"
-                        value="${escapeHtml(String(
-                          Number.isFinite(getAssignedAmountForEntry(row, getMonthDraftState(month).draftAllocations))
-                            && getAssignedAmountForEntry(row, getMonthDraftState(month).draftAllocations) !== 0
-                            ? getAssignedAmountForEntry(row, getMonthDraftState(month).draftAllocations)
-                            : ''
-                        ))}"
-                        step="0.01"
-                        placeholder="${escapeHtml(row.suggestedAssigned ? String(row.suggestedAssigned) : '0.00')}"
-                      >
-                    </div>
-                  </div>
-                  <div class="amount ${row.activity < 0 ? 'negative' : 'positive'} budget-row-activity">${formatCurrency(row.activity)}</div>
-                  <div class="amount ${row.available < 0 ? 'negative' : 'positive'} budget-row-available">${formatCurrency(row.available)}</div>
-                  <div class="budget-note-action">
-                    <button
-                      type="button"
-                      class="icon-button ${row.monthlyNote ? '' : 'ghost'} ${budgetState.expandedNoteKey === `${month}::${row.entryKey}` ? 'is-active' : ''}"
-                      data-note-toggle-entry-key="${row.entryKey}"
-                      data-month="${month}"
-                      aria-label="${row.monthlyNote ? 'Edit monthly note' : 'Add monthly note'}"
-                      title="${row.monthlyNote ? 'Edit monthly note' : 'Add monthly note'}"
-                    >
-                      ${getActionIcon('note')}
-                    </button>
-                  </div>
+        <div class="budget-groups">
+          ${model.groups.map(group => `
+            <article class="budget-group-card">
+              <div class="budget-group-header">
+                <div>
+                  <h4>${escapeHtml(group.name)}</h4>
+                  <p>${escapeHtml(group.note || `${group.rows.length} ${group.rows.length === 1 ? 'budget row' : 'budget rows'}`)}</p>
                 </div>
-                ${budgetState.expandedNoteKey === `${month}::${row.entryKey}` ? `
-                  <div class="budget-note-editor" data-note-editor-entry-key="${month}::${row.entryKey}">
-                    <div class="budget-note-editor-copy">
-                      <strong>Monthly note</strong>
-                      <p>This note is saved only for ${escapeHtml(formatMonthLabel(month))}.</p>
-                    </div>
-                    <textarea
-                      class="budget-note-textarea"
-                      data-note-entry-key="${row.entryKey}"
-                      data-month="${month}"
-                      aria-label="Monthly note for ${escapeHtml(row.subCategoryName || row.categoryName)}"
-                      rows="3"
-                      placeholder="Add a monthly note for this row"
-                    >${escapeHtml(row.monthlyNote)}</textarea>
-                  </div>
-                ` : ''}
+                <div class="budget-group-totals">
+                  <span class="pill" data-category-assigned="${month}::${group.id}">Assigned ${formatCurrency(group.totals.assigned)}</span>
+                  <span class="pill ${group.totals.activity < 0 ? 'warn' : ''}" data-category-activity="${month}::${group.id}">Activity ${formatCurrency(group.totals.activity)}</span>
+                  <span class="pill ${group.totals.available < 0 ? 'warn' : ''}" data-category-total="${month}::${group.id}">${formatCurrency(group.totals.available)} Remaining</span>
+                </div>
               </div>
-            `).join('') : ''}
-          </article>
-        `).join('')}
-      </div>
-    </section>
+              <div class="budget-row budget-row-head">
+                <div>Line</div>
+                <div>Carry</div>
+                <div>Assign</div>
+                <div>Activity</div>
+                <div>Remain</div>
+                <div>Note</div>
+              </div>
+              ${model.groups.length ? group.rows.map(row => `
+                <div class="budget-row-stack">
+                  <div class="budget-row" data-budget-row-key="${month}::${row.entryKey}" data-entry-key="${row.entryKey}" data-month="${month}" data-category-id="${group.id}">
+                    <div class="budget-line-copy">
+                      <strong>${escapeHtml(row.subCategoryName || row.categoryName)}</strong>
+                      <p>${escapeHtml(
+                        [
+                          row.target.type ? `${TARGET_TYPE_LABELS[row.target.type]} target` : '',
+                          row.target.amount ? formatCurrency(row.target.amount) : '',
+                          row.recurring.enabled ? `Recurring ${row.recurring.cadence} ${formatCurrency(row.recurring.amount)}` : '',
+                          row.note
+                        ].filter(Boolean).join(' | ') || (row.isCategoryFallback ? 'Category-level budget row' : 'Flexible')
+                      )}</p>
+                    </div>
+                    <div class="amount budget-row-carryover">${formatCurrency(row.carryover)}</div>
+                    <div class="budget-assigned-field">
+                      <div class="budget-amount-input-shell">
+                        <span class="budget-amount-prefix" aria-hidden="true">$</span>
+                        <input
+                          type="number"
+                          class="budget-assigned-input"
+                          data-entry-key="${row.entryKey}"
+                          data-month="${month}"
+                          aria-label="Amount to allocate for ${escapeHtml(row.subCategoryName || row.categoryName)} in ${escapeHtml(formatMonthLabel(month))}"
+                          value="${escapeHtml(String(
+                            Number.isFinite(getAssignedAmountForEntry(row, getMonthDraftState(month).draftAllocations))
+                              && getAssignedAmountForEntry(row, getMonthDraftState(month).draftAllocations) !== 0
+                              ? getAssignedAmountForEntry(row, getMonthDraftState(month).draftAllocations)
+                              : ''
+                          ))}"
+                          step="0.01"
+                          placeholder="${escapeHtml(row.suggestedAssigned ? String(row.suggestedAssigned) : '0.00')}"
+                        >
+                      </div>
+                    </div>
+                    <div class="amount ${row.activity < 0 ? 'negative' : 'positive'} budget-row-activity">${formatCurrency(row.activity)}</div>
+                    <div class="amount ${row.available < 0 ? 'negative' : 'positive'} budget-row-available">${formatCurrency(row.available)}</div>
+                    <div class="budget-note-action">
+                      <button
+                        type="button"
+                        class="icon-button ${row.monthlyNote ? '' : 'ghost'} ${budgetState.expandedNoteKey === `${month}::${row.entryKey}` ? 'is-active' : ''}"
+                        data-note-toggle-entry-key="${row.entryKey}"
+                        data-month="${month}"
+                        aria-label="${row.monthlyNote ? 'Edit monthly note' : 'Add monthly note'}"
+                        title="${row.monthlyNote ? 'Edit monthly note' : 'Add monthly note'}"
+                      >
+                        ${getActionIcon('note')}
+                      </button>
+                    </div>
+                  </div>
+                  ${budgetState.expandedNoteKey === `${month}::${row.entryKey}` ? `
+                    <div class="budget-note-editor" data-note-editor-entry-key="${month}::${row.entryKey}">
+                      <div class="budget-note-editor-copy">
+                        <strong>Monthly note</strong>
+                        <p>This note is saved only for ${escapeHtml(formatMonthLabel(month))}.</p>
+                      </div>
+                      <textarea
+                        class="budget-note-textarea"
+                        data-note-entry-key="${row.entryKey}"
+                        data-month="${month}"
+                        aria-label="Monthly note for ${escapeHtml(row.subCategoryName || row.categoryName)}"
+                        rows="3"
+                        placeholder="Add a monthly note for this row"
+                      >${escapeHtml(row.monthlyNote)}</textarea>
+                    </div>
+                  ` : ''}
+                </div>
+              `).join('') : ''}
+            </article>
+          `).join('')}
+        </div>
+      </section>
+    </div>
   `;
 }
 
@@ -794,7 +795,7 @@ function renderBudgetWorkspaceGrid(monthModels) {
 
   view.innerHTML = `
     <div class="budget-month-grid">
-      ${monthModels.map(({ month, model, draftMeta }) => renderBudgetMonthGrid(month, model, draftMeta)).join('')}
+      ${monthModels.map(({ month, model, draftMeta }, index) => renderBudgetMonthGrid(month, model, draftMeta, index === 1)).join('')}
     </div>
   `;
 }
@@ -824,7 +825,9 @@ function renderBudgetWorkspace() {
     return;
   }
 
-  document.getElementById('budget-month-label').textContent = formatMonthWindowLabel(budgetState.visibleMonths);
+  document.getElementById('budget-month-label').textContent = formatMonthLabel(
+    budgetState.selectedMonth || budgetState.visibleMonths[1] || budgetState.visibleMonths[0]
+  );
   updateBudgetDraftHint();
 
   const monthModels = budgetState.visibleMonths.map(month => {
@@ -839,7 +842,9 @@ function renderBudgetWorkspace() {
       draftMeta: draftState
     };
   });
-  const focusedMonthModel = monthModels.find(({ month }) => month === budgetState.selectedMonth) || monthModels[1];
+  const focusedMonthModel = monthModels.find(({ month }) => month === budgetState.selectedMonth)
+    || monthModels[1]
+    || monthModels[0];
 
   renderBudgetSummaryCards(focusedMonthModel.model.summary, formatMonthLabel(focusedMonthModel.month));
   renderBudgetWorkspaceGrid(monthModels);
@@ -858,7 +863,9 @@ function refreshBudgetComputedDisplay() {
       getMonthDraftState(month).draftAllocations
     )
   }));
-  const focusedMonthModel = monthModels.find(({ month }) => month === budgetState.selectedMonth) || monthModels[1];
+  const focusedMonthModel = monthModels.find(({ month }) => month === budgetState.selectedMonth)
+    || monthModels[1]
+    || monthModels[0];
 
   renderBudgetSummaryCards(focusedMonthModel.model.summary, formatMonthLabel(focusedMonthModel.month));
   monthModels.forEach(({ month, model }) => {
@@ -1109,9 +1116,10 @@ async function loadBudgetView(options = {}) {
     .reduce((sum, account) => sum + Number(account.currentBalance || 0), 0);
   const entries = buildBudgetEntryDefinitions(categories, subCategories, transactions, budgetAllocations);
   const visibleMonths = getVisibleBudgetMonths(targetMonth);
+  const centeredMonth = visibleMonths[1] || targetMonth;
 
-  budgetState.selectedMonth = targetMonth;
-  budgetState.loadedMonth = targetMonth;
+  budgetState.selectedMonth = centeredMonth;
+  budgetState.loadedMonth = centeredMonth;
   budgetState.visibleMonths = visibleMonths;
   budgetState.context = {
     availableCash,
