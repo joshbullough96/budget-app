@@ -318,6 +318,7 @@ textarea {
 }
 
 .import-bar {
+  width: 25rem;
   display: flex;
   align-items: center;
   gap: 0.75rem;

@@ -236,7 +236,7 @@ async function loadTransactions() {
   transactionSubCategoriesCache = subCategories;
   const sortedTransactions = transactions
     .slice()
-    .sort((left, right) => new Date(right.date) - new Date(left.date));
+    .sort((left, right) => parseDateValue(right.date) - parseDateValue(left.date));
 
   const emptyMarkup = !sortedTransactions.length
     ? `
@@ -679,8 +679,36 @@ function formatCurrency(amount) {
   }).format(Number(amount || 0));
 }
 
+function padDatePart(value) {
+  return String(value).padStart(2, '0');
+}
+
+function buildLocalDateValue(date) {
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`;
+}
+
+function buildLocalMonthValue(date) {
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}`;
+}
+
+function parseDateValue(value) {
+  if (typeof value !== 'string') {
+    return new Date(value);
+  }
+
+  const trimmedValue = value.trim();
+  const dateOnlyMatch = trimmedValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch;
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+
+  return new Date(trimmedValue);
+}
+
 function formatDate(value) {
-  const parsed = new Date(value);
+  const parsed = parseDateValue(value);
 
   if (Number.isNaN(parsed.getTime())) {
     return value;
@@ -694,7 +722,11 @@ function formatDate(value) {
 }
 
 function getTodayDateValue() {
-  return new Date().toISOString().split('T')[0];
+  return buildLocalDateValue(new Date());
+}
+
+function getCurrentMonthValue() {
+  return buildLocalMonthValue(new Date());
 }
 
 const TARGET_TYPE_LABELS = {
@@ -976,7 +1008,7 @@ function readTransactionRowValues(row) {
 }
 
 function compareTransactionsForRunningBalance(left, right) {
-  const dateDifference = new Date(left.date) - new Date(right.date);
+  const dateDifference = parseDateValue(left.date) - parseDateValue(right.date);
 
   if (dateDifference !== 0) {
     return dateDifference;
@@ -1188,7 +1220,7 @@ async function importTransactionsFromCsv() {
       const category = categoriesByName.get(categoryName);
       const amount = parseImportedAmount(amountRaw);
 
-      if (!date || Number.isNaN(new Date(date).getTime())) {
+      if (!date || Number.isNaN(parseDateValue(date).getTime())) {
         errors.push(`Row ${csvRowNumber}: invalid date "${date}".`);
         return;
       }
@@ -1625,7 +1657,7 @@ window.onload = () => {
   window.cancelTransactionEdit = cancelTransactionEdit;
   window.saveTransactionEdit = saveTransactionEdit;
   window.confirmDeleteTransaction = confirmDeleteTransaction;
-  document.getElementById('budget-month').value = new Date().toISOString().slice(0, 7);
+  document.getElementById('budget-month').value = getCurrentMonthValue();
   syncTransactionDerivedState()
     .then(async () => {
       showSection('accounts');
@@ -1776,7 +1808,7 @@ window.onload = () => {
 
       await cache.insert('budgetAllocations', budgetAllocation);
       e.target.reset();
-      document.getElementById('budget-month').value = new Date().toISOString().slice(0, 7);
+      document.getElementById('budget-month').value = getCurrentMonthValue();
       await loadBudgetView();
       setStatus(`Saved allocation for ${month}`);
     } catch (error) {
