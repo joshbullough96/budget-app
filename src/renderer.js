@@ -20,12 +20,11 @@ let transactionSubCategoriesCache = [];
 let budgetState = {
   selectedMonth: '',
   loadedMonth: '',
+  visibleMonths: [],
   context: null,
-  draftAllocations: new Map(),
-  draftSourceMonth: null,
-  draftSourceLabel: '',
-  expandedNoteEntryKey: null,
-  isPrefilled: false
+  draftAllocationsByMonth: new Map(),
+  draftMetaByMonth: new Map(),
+  expandedNoteKey: null
 };
 const sectionCopy = {
   accounts: {
@@ -306,6 +305,22 @@ function formatMonthLabel(monthValue) {
   });
 }
 
+function formatMonthWindowLabel(months) {
+  if (!months.length) {
+    return '';
+  }
+
+  return `${formatMonthLabel(months[0])} - ${formatMonthLabel(months[months.length - 1])}`;
+}
+
+function getVisibleBudgetMonths(centerMonth) {
+  return [
+    shiftMonthValue(centerMonth, -1),
+    centerMonth,
+    shiftMonthValue(centerMonth, 1)
+  ];
+}
+
 function buildBudgetEntryKey(categoryId, subCategoryId = null) {
   return `${categoryId}::${subCategoryId || 'root'}`;
 }
@@ -483,6 +498,26 @@ function buildBudgetDraftAllocations(context, month) {
   };
 }
 
+function getMonthDraftState(month) {
+  return {
+    draftAllocations: budgetState.draftAllocationsByMonth.get(month) || new Map(),
+    ...(budgetState.draftMetaByMonth.get(month) || {
+      draftSourceMonth: null,
+      draftSourceLabel: '',
+      isPrefilled: false
+    })
+  };
+}
+
+function setMonthDraftState(month, draftState) {
+  budgetState.draftAllocationsByMonth.set(month, draftState.draftAllocations);
+  budgetState.draftMetaByMonth.set(month, {
+    draftSourceMonth: draftState.draftSourceMonth || null,
+    draftSourceLabel: draftState.draftSourceLabel || '',
+    isPrefilled: Boolean(draftState.isPrefilled)
+  });
+}
+
 function getAssignedAmountForEntry(entry, draftAllocations) {
   return Number(draftAllocations.get(entry.entryKey)?.assigned || 0);
 }
@@ -604,7 +639,7 @@ function buildBudgetPresentationModel(context, month, draftAllocations) {
   };
 }
 
-function renderBudgetSummaryCards(summary) {
+function renderBudgetSummaryCards(summary, monthLabel) {
   const container = document.getElementById('budget-summary-cards');
   const remainingClass = summary.leftToAssign < 0 ? 'negative' : 'positive';
   const remainingLabel = summary.leftToAssign < 0 ? 'Overbudget' : 'Left To Assign';
@@ -618,7 +653,7 @@ function renderBudgetSummaryCards(summary) {
     <article class="hero-card">
       <p class="hero-label">Assigned</p>
       <h3>${formatCurrency(summary.assignedThisMonth)}</h3>
-      <p class="hero-copy">Money assigned in ${escapeHtml(formatMonthLabel(budgetState.selectedMonth))}.</p>
+      <p class="hero-copy">Money assigned in ${escapeHtml(monthLabel)}.</p>
     </article>
     <article class="hero-card">
       <p class="hero-label">Activity</p>
@@ -633,10 +668,121 @@ function renderBudgetSummaryCards(summary) {
   `;
 }
 
-function renderBudgetWorkspaceGrid(model) {
+function renderBudgetMonthGrid(month, model, draftMeta) {
+  return `
+    <section class="budget-month-column">
+      <div class="budget-month-column-header">
+        <div>
+          <p class="eyebrow">Budget Month</p>
+          <h4>${escapeHtml(formatMonthLabel(month))}</h4>
+        </div>
+        <p class="budget-month-column-hint">${escapeHtml(
+          draftMeta.isPrefilled && draftMeta.draftSourceLabel
+            ? `Prefilled from ${draftMeta.draftSourceLabel}`
+            : 'Monthly draft ready'
+        )}</p>
+      </div>
+      <div class="budget-groups">
+        ${model.groups.map(group => `
+          <article class="budget-group-card">
+            <div class="budget-group-header">
+              <div>
+                <h4>${escapeHtml(group.name)}</h4>
+                <p>${escapeHtml(group.note || `${group.rows.length} ${group.rows.length === 1 ? 'budget row' : 'budget rows'}`)}</p>
+              </div>
+              <div class="budget-group-totals">
+                <span class="pill" data-category-assigned="${month}::${group.id}">Assigned ${formatCurrency(group.totals.assigned)}</span>
+                <span class="pill ${group.totals.activity < 0 ? 'warn' : ''}" data-category-activity="${month}::${group.id}">Activity ${formatCurrency(group.totals.activity)}</span>
+                <span class="pill ${group.totals.available < 0 ? 'warn' : ''}" data-category-total="${month}::${group.id}">${formatCurrency(group.totals.available)} Remaining</span>
+              </div>
+            </div>
+            <div class="budget-row budget-row-head">
+              <div>Line</div>
+              <div>Carryover</div>
+              <div>Allocate</div>
+              <div>Activity</div>
+              <div>Remaining</div>
+              <div>Note</div>
+            </div>
+            ${model.groups.length ? group.rows.map(row => `
+              <div class="budget-row-stack">
+                <div class="budget-row" data-budget-row-key="${month}::${row.entryKey}" data-entry-key="${row.entryKey}" data-month="${month}" data-category-id="${group.id}">
+                  <div class="budget-line-copy">
+                    <strong>${escapeHtml(row.subCategoryName || row.categoryName)}</strong>
+                    <p>${escapeHtml(
+                      [
+                        row.target.type ? `${TARGET_TYPE_LABELS[row.target.type]} target` : '',
+                        row.target.amount ? formatCurrency(row.target.amount) : '',
+                        row.recurring.enabled ? `Recurring ${row.recurring.cadence} ${formatCurrency(row.recurring.amount)}` : '',
+                        row.note
+                      ].filter(Boolean).join(' | ') || (row.isCategoryFallback ? 'Category-level budget row' : 'Flexible')
+                    )}</p>
+                  </div>
+                  <div class="amount budget-row-carryover">${formatCurrency(row.carryover)}</div>
+                  <div class="budget-assigned-field">
+                    <div class="budget-amount-input-shell">
+                      <span class="budget-amount-prefix" aria-hidden="true">$</span>
+                      <input
+                        type="number"
+                        class="budget-assigned-input"
+                        data-entry-key="${row.entryKey}"
+                        data-month="${month}"
+                        aria-label="Amount to allocate for ${escapeHtml(row.subCategoryName || row.categoryName)} in ${escapeHtml(formatMonthLabel(month))}"
+                        value="${escapeHtml(String(
+                          Number.isFinite(getAssignedAmountForEntry(row, getMonthDraftState(month).draftAllocations))
+                            && getAssignedAmountForEntry(row, getMonthDraftState(month).draftAllocations) !== 0
+                            ? getAssignedAmountForEntry(row, getMonthDraftState(month).draftAllocations)
+                            : ''
+                        ))}"
+                        step="0.01"
+                        placeholder="${escapeHtml(row.suggestedAssigned ? String(row.suggestedAssigned) : '0.00')}"
+                      >
+                    </div>
+                  </div>
+                  <div class="amount ${row.activity < 0 ? 'negative' : 'positive'} budget-row-activity">${formatCurrency(row.activity)}</div>
+                  <div class="amount ${row.available < 0 ? 'negative' : 'positive'} budget-row-available">${formatCurrency(row.available)}</div>
+                  <div class="budget-note-action">
+                    <button
+                      type="button"
+                      class="icon-button ${row.monthlyNote ? '' : 'ghost'} ${budgetState.expandedNoteKey === `${month}::${row.entryKey}` ? 'is-active' : ''}"
+                      data-note-toggle-entry-key="${row.entryKey}"
+                      data-month="${month}"
+                      aria-label="${row.monthlyNote ? 'Edit monthly note' : 'Add monthly note'}"
+                      title="${row.monthlyNote ? 'Edit monthly note' : 'Add monthly note'}"
+                    >
+                      ${getActionIcon('note')}
+                    </button>
+                  </div>
+                </div>
+                ${budgetState.expandedNoteKey === `${month}::${row.entryKey}` ? `
+                  <div class="budget-note-editor" data-note-editor-entry-key="${month}::${row.entryKey}">
+                    <div class="budget-note-editor-copy">
+                      <strong>Monthly note</strong>
+                      <p>This note is saved only for ${escapeHtml(formatMonthLabel(month))}.</p>
+                    </div>
+                    <textarea
+                      class="budget-note-textarea"
+                      data-note-entry-key="${row.entryKey}"
+                      data-month="${month}"
+                      aria-label="Monthly note for ${escapeHtml(row.subCategoryName || row.categoryName)}"
+                      rows="3"
+                      placeholder="Add a monthly note for this row"
+                    >${escapeHtml(row.monthlyNote)}</textarea>
+                  </div>
+                ` : ''}
+              </div>
+            `).join('') : ''}
+          </article>
+        `).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function renderBudgetWorkspaceGrid(monthModels) {
   const view = document.getElementById('budget-view');
 
-  if (!model.groups.length) {
+  if (!monthModels.some(({ model }) => model.groups.length)) {
     view.innerHTML = `
       <div class="empty-state">
         <h4>No budgetable categories yet</h4>
@@ -647,95 +793,8 @@ function renderBudgetWorkspaceGrid(model) {
   }
 
   view.innerHTML = `
-    <div class="budget-groups">
-      ${model.groups.map(group => `
-        <article class="budget-group-card">
-          <div class="budget-group-header">
-            <div>
-              <h4>${escapeHtml(group.name)}</h4>
-              <p>${escapeHtml(group.note || `${group.rows.length} ${group.rows.length === 1 ? 'budget row' : 'budget rows'}`)}</p>
-            </div>
-            <div class="budget-group-totals">
-              <span class="pill" data-category-assigned="${group.id}">Assigned ${formatCurrency(group.totals.assigned)}</span>
-              <span class="pill ${group.totals.activity < 0 ? 'warn' : ''}" data-category-activity="${group.id}">Activity ${formatCurrency(group.totals.activity)}</span>
-              <span class="pill ${group.totals.available < 0 ? 'warn' : ''}" data-category-total="${group.id}">${formatCurrency(group.totals.available)} Remaining</span>
-            </div>
-          </div>
-          <div class="budget-row budget-row-head">
-            <div>Line</div>
-            <div>Carryover</div>
-            <div>Allocate</div>
-            <div>Activity</div>
-            <div>Remaining</div>
-            <div>Note</div>
-          </div>
-          ${group.rows.map(row => `
-            <div class="budget-row-stack">
-              <div class="budget-row" data-entry-key="${row.entryKey}" data-category-id="${group.id}">
-                <div class="budget-line-copy">
-                  <strong>${escapeHtml(row.subCategoryName || row.categoryName)}</strong>
-                  <p>${escapeHtml(
-                    [
-                      row.target.type ? `${TARGET_TYPE_LABELS[row.target.type]} target` : '',
-                      row.target.amount ? formatCurrency(row.target.amount) : '',
-                      row.recurring.enabled ? `Recurring ${row.recurring.cadence} ${formatCurrency(row.recurring.amount)}` : '',
-                      row.note
-                    ].filter(Boolean).join(' | ') || (row.isCategoryFallback ? 'Category-level budget row' : 'Flexible')
-                  )}</p>
-                </div>
-                <div class="amount budget-row-carryover">${formatCurrency(row.carryover)}</div>
-                <div class="budget-assigned-field">
-                  <div class="budget-amount-input-shell">
-                    <span class="budget-amount-prefix" aria-hidden="true">$</span>
-                    <input
-                    type="number"
-                    class="budget-assigned-input"
-                    data-entry-key="${row.entryKey}"
-                    aria-label="Amount to allocate for ${escapeHtml(row.subCategoryName || row.categoryName)}"
-                    value="${escapeHtml(String(
-                      Number.isFinite(getAssignedAmountForEntry(row, budgetState.draftAllocations))
-                        && getAssignedAmountForEntry(row, budgetState.draftAllocations) !== 0
-                        ? getAssignedAmountForEntry(row, budgetState.draftAllocations)
-                        : ''
-                    ))}"
-                    step="0.01"
-                    placeholder="${escapeHtml(row.suggestedAssigned ? String(row.suggestedAssigned) : '0.00')}"
-                  >
-                </div>
-              </div>
-                <div class="amount ${row.activity < 0 ? 'negative' : 'positive'} budget-row-activity">${formatCurrency(row.activity)}</div>
-                <div class="amount ${row.available < 0 ? 'negative' : 'positive'} budget-row-available">${formatCurrency(row.available)}</div>
-                <div class="budget-note-action">
-                  <button
-                    type="button"
-                    class="icon-button ${row.monthlyNote ? '' : 'ghost'} ${budgetState.expandedNoteEntryKey === row.entryKey ? 'is-active' : ''}"
-                    data-note-toggle-entry-key="${row.entryKey}"
-                    aria-label="${row.monthlyNote ? 'Edit monthly note' : 'Add monthly note'}"
-                    title="${row.monthlyNote ? 'Edit monthly note' : 'Add monthly note'}"
-                  >
-                    ${getActionIcon('note')}
-                  </button>
-                </div>
-              </div>
-              ${budgetState.expandedNoteEntryKey === row.entryKey ? `
-                <div class="budget-note-editor" data-note-editor-entry-key="${row.entryKey}">
-                  <div class="budget-note-editor-copy">
-                    <strong>Monthly note</strong>
-                    <p>This note is saved only for ${escapeHtml(formatMonthLabel(budgetState.selectedMonth))}.</p>
-                  </div>
-                  <textarea
-                    class="budget-note-textarea"
-                    data-note-entry-key="${row.entryKey}"
-                    aria-label="Monthly note for ${escapeHtml(row.subCategoryName || row.categoryName)}"
-                    rows="3"
-                    placeholder="Add a monthly note for this row"
-                  >${escapeHtml(row.monthlyNote)}</textarea>
-                </div>
-              ` : ''}
-            </div>
-          `).join('')}
-        </article>
-      `).join('')}
+    <div class="budget-month-grid">
+      ${monthModels.map(({ month, model, draftMeta }) => renderBudgetMonthGrid(month, model, draftMeta)).join('')}
     </div>
   `;
 }
@@ -744,16 +803,20 @@ function updateBudgetDraftHint() {
   const hint = document.getElementById('budget-draft-hint');
 
   if (!budgetState.context) {
-    hint.textContent = 'Monthly budget drafts stay editable until you save them.';
+    hint.textContent = 'Three-month budget drafts stay editable until you save the visible months.';
     return;
   }
 
-  if (budgetState.isPrefilled && budgetState.draftSourceLabel) {
-    hint.textContent = `Prefilled from ${budgetState.draftSourceLabel}. Review the month, then save when it looks right.`;
+  const visiblePrefills = budgetState.visibleMonths
+    .map(month => ({ month, meta: budgetState.draftMetaByMonth.get(month) }))
+    .filter(({ meta }) => meta?.isPrefilled && meta?.draftSourceLabel);
+
+  if (visiblePrefills.length) {
+    hint.textContent = 'Three-month draft loaded. Review the visible months, then save when they look right.';
     return;
   }
 
-  hint.textContent = 'Monthly budget drafts stay editable until you save them.';
+  hint.textContent = 'Three-month budget drafts stay editable until you save the visible months.';
 }
 
 function renderBudgetWorkspace() {
@@ -761,17 +824,25 @@ function renderBudgetWorkspace() {
     return;
   }
 
-  document.getElementById('budget-month-label').textContent = formatMonthLabel(budgetState.selectedMonth);
+  document.getElementById('budget-month-label').textContent = formatMonthWindowLabel(budgetState.visibleMonths);
   updateBudgetDraftHint();
 
-  const model = buildBudgetPresentationModel(
-    budgetState.context,
-    budgetState.selectedMonth,
-    budgetState.draftAllocations
-  );
+  const monthModels = budgetState.visibleMonths.map(month => {
+    const draftState = getMonthDraftState(month);
+    return {
+      month,
+      model: buildBudgetPresentationModel(
+        budgetState.context,
+        month,
+        draftState.draftAllocations
+      ),
+      draftMeta: draftState
+    };
+  });
+  const focusedMonthModel = monthModels.find(({ month }) => month === budgetState.selectedMonth) || monthModels[1];
 
-  renderBudgetSummaryCards(model.summary);
-  renderBudgetWorkspaceGrid(model);
+  renderBudgetSummaryCards(focusedMonthModel.model.summary, formatMonthLabel(focusedMonthModel.month));
+  renderBudgetWorkspaceGrid(monthModels);
 }
 
 function refreshBudgetComputedDisplay() {
@@ -779,108 +850,123 @@ function refreshBudgetComputedDisplay() {
     return;
   }
 
-  const model = buildBudgetPresentationModel(
-    budgetState.context,
-    budgetState.selectedMonth,
-    budgetState.draftAllocations
-  );
+  const monthModels = budgetState.visibleMonths.map(month => ({
+    month,
+    model: buildBudgetPresentationModel(
+      budgetState.context,
+      month,
+      getMonthDraftState(month).draftAllocations
+    )
+  }));
+  const focusedMonthModel = monthModels.find(({ month }) => month === budgetState.selectedMonth) || monthModels[1];
 
-  renderBudgetSummaryCards(model.summary);
-  model.groups.forEach(group => {
-    const categoryAssigned = document.querySelector(`[data-category-assigned="${group.id}"]`);
-    const categoryActivity = document.querySelector(`[data-category-activity="${group.id}"]`);
-    const categoryTotal = document.querySelector(`[data-category-total="${group.id}"]`);
+  renderBudgetSummaryCards(focusedMonthModel.model.summary, formatMonthLabel(focusedMonthModel.month));
+  monthModels.forEach(({ month, model }) => {
+    model.groups.forEach(group => {
+      const categoryAssigned = document.querySelector(`[data-category-assigned="${month}::${group.id}"]`);
+      const categoryActivity = document.querySelector(`[data-category-activity="${month}::${group.id}"]`);
+      const categoryTotal = document.querySelector(`[data-category-total="${month}::${group.id}"]`);
 
-    if (categoryAssigned) {
-      categoryAssigned.textContent = `Assigned ${formatCurrency(group.totals.assigned)}`;
-    }
-
-    if (categoryActivity) {
-      categoryActivity.textContent = `Activity ${formatCurrency(group.totals.activity)}`;
-      categoryActivity.classList.toggle('warn', group.totals.activity < 0);
-    }
-
-    if (categoryTotal) {
-      categoryTotal.textContent = `${formatCurrency(group.totals.available)} Remaining`;
-      categoryTotal.classList.toggle('warn', group.totals.available < 0);
-    }
-
-    group.rows.forEach(row => {
-      const rowElement = document.querySelector(`[data-entry-key="${row.entryKey}"]`);
-
-      if (!rowElement) {
-        return;
+      if (categoryAssigned) {
+        categoryAssigned.textContent = `Assigned ${formatCurrency(group.totals.assigned)}`;
       }
 
-      const activityElement = rowElement.querySelector('.budget-row-activity');
-      const availableElement = rowElement.querySelector('.budget-row-available');
-      const carryoverElement = rowElement.querySelector('.budget-row-carryover');
-
-      if (carryoverElement) {
-        carryoverElement.textContent = formatCurrency(row.carryover);
+      if (categoryActivity) {
+        categoryActivity.textContent = `Activity ${formatCurrency(group.totals.activity)}`;
+        categoryActivity.classList.toggle('warn', group.totals.activity < 0);
       }
 
-      if (activityElement) {
-        activityElement.textContent = formatCurrency(row.activity);
-        activityElement.classList.toggle('negative', row.activity < 0);
-        activityElement.classList.toggle('positive', row.activity >= 0);
+      if (categoryTotal) {
+        categoryTotal.textContent = `${formatCurrency(group.totals.available)} Remaining`;
+        categoryTotal.classList.toggle('warn', group.totals.available < 0);
       }
 
-      if (availableElement) {
-        availableElement.textContent = formatCurrency(row.available);
-        availableElement.classList.toggle('negative', row.available < 0);
-        availableElement.classList.toggle('positive', row.available >= 0);
-      }
+      group.rows.forEach(row => {
+        const rowElement = document.querySelector(`[data-budget-row-key="${month}::${row.entryKey}"]`);
+
+        if (!rowElement) {
+          return;
+        }
+
+        const activityElement = rowElement.querySelector('.budget-row-activity');
+        const availableElement = rowElement.querySelector('.budget-row-available');
+        const carryoverElement = rowElement.querySelector('.budget-row-carryover');
+
+        if (carryoverElement) {
+          carryoverElement.textContent = formatCurrency(row.carryover);
+        }
+
+        if (activityElement) {
+          activityElement.textContent = formatCurrency(row.activity);
+          activityElement.classList.toggle('negative', row.activity < 0);
+          activityElement.classList.toggle('positive', row.activity >= 0);
+        }
+
+        if (availableElement) {
+          availableElement.textContent = formatCurrency(row.available);
+          availableElement.classList.toggle('negative', row.available < 0);
+          availableElement.classList.toggle('positive', row.available >= 0);
+        }
+      });
     });
   });
 }
 
-function updateBudgetDraftEntry(entryKey, updates) {
-  const currentDraft = budgetState.draftAllocations.get(entryKey);
+function updateBudgetDraftEntry(month, entryKey, updates) {
+  const draftAllocations = budgetState.draftAllocationsByMonth.get(month);
+  const currentDraft = draftAllocations?.get(entryKey);
 
   if (!currentDraft) {
     return;
   }
 
-  budgetState.draftAllocations.set(entryKey, {
+  draftAllocations.set(entryKey, {
     ...currentDraft,
     ...updates
   });
 }
 
-function materializeBudgetPrefillSuggestions() {
+function materializeBudgetPrefillSuggestions(months = budgetState.visibleMonths) {
   let appliedCount = 0;
 
-  budgetState.draftAllocations.forEach((draft, entryKey) => {
-    if ((draft.assigned === null || typeof draft.assigned === 'undefined') && Number(draft.suggestedAssigned || 0) > 0) {
-      budgetState.draftAllocations.set(entryKey, {
-        ...draft,
-        assigned: Number(draft.suggestedAssigned || 0)
-      });
-      appliedCount += 1;
+  months.forEach(month => {
+    const draftAllocations = budgetState.draftAllocationsByMonth.get(month);
+
+    if (!draftAllocations) {
+      return;
     }
+
+    draftAllocations.forEach((draft, entryKey) => {
+      if ((draft.assigned === null || typeof draft.assigned === 'undefined') && Number(draft.suggestedAssigned || 0) > 0) {
+        draftAllocations.set(entryKey, {
+          ...draft,
+          assigned: Number(draft.suggestedAssigned || 0)
+        });
+        appliedCount += 1;
+      }
+    });
   });
 
   return appliedCount;
 }
 
-function resetBudgetDraftForSelectedMonth() {
+function resetBudgetDraftForVisibleMonths() {
   if (!budgetState.context) {
     return;
   }
 
-  const nextDraftState = buildBudgetDraftAllocations(budgetState.context, budgetState.selectedMonth);
-  budgetState.draftAllocations = nextDraftState.draftAllocations;
-  budgetState.draftSourceMonth = nextDraftState.draftSourceMonth;
-  budgetState.draftSourceLabel = nextDraftState.draftSourceLabel;
-  budgetState.isPrefilled = nextDraftState.isPrefilled;
+  budgetState.visibleMonths.forEach(month => {
+    const nextDraftState = buildBudgetDraftAllocations(budgetState.context, month);
+    setMonthDraftState(month, nextDraftState);
+  });
   renderBudgetWorkspace();
 }
 
-function toggleBudgetNoteEditor(entryKey) {
-  budgetState.expandedNoteEntryKey = budgetState.expandedNoteEntryKey === entryKey
+function toggleBudgetNoteEditor(month, entryKey) {
+  const noteKey = `${month}::${entryKey}`;
+  budgetState.expandedNoteKey = budgetState.expandedNoteKey === noteKey
     ? null
-    : entryKey;
+    : noteKey;
   renderBudgetWorkspace();
 }
 
@@ -908,33 +994,43 @@ function copyBudgetFromPreviousMonth() {
     return false;
   }
 
-  const sourceMonth = getNearestPriorBudgetMonth(budgetState.selectedMonth, budgetState.context.budgetAllocations);
+  let applied = false;
 
-  if (!sourceMonth) {
-    return false;
-  }
+  budgetState.visibleMonths.forEach(month => {
+    const sourceMonth = getNearestPriorBudgetMonth(month, budgetState.context.budgetAllocations);
 
-  budgetState.draftAllocations = new Map(budgetState.context.entries.flatMap(group => group.rows).map(row => {
-    const sourceAllocation = budgetState.context.savedAllocationLookup.get(
-      buildBudgetMonthEntryKey(sourceMonth, row.categoryId, row.subCategoryId)
-    );
+    if (!sourceMonth) {
+      return;
+    }
 
-    return [
-      row.entryKey,
-      {
-        categoryId: row.categoryId,
-        subCategoryId: row.subCategoryId,
-        assigned: Number(sourceAllocation?.assigned || 0),
-        suggestedAssigned: 0,
-        note: ''
-      }
-    ];
-  }));
-  budgetState.draftSourceMonth = sourceMonth;
-  budgetState.draftSourceLabel = formatMonthLabel(sourceMonth);
-  budgetState.isPrefilled = true;
+    const draftAllocations = new Map(budgetState.context.entries.flatMap(group => group.rows).map(row => {
+      const sourceAllocation = budgetState.context.savedAllocationLookup.get(
+        buildBudgetMonthEntryKey(sourceMonth, row.categoryId, row.subCategoryId)
+      );
+
+      return [
+        row.entryKey,
+        {
+          categoryId: row.categoryId,
+          subCategoryId: row.subCategoryId,
+          assigned: Number(sourceAllocation?.assigned || 0),
+          suggestedAssigned: 0,
+          note: ''
+        }
+      ];
+    }));
+
+    setMonthDraftState(month, {
+      draftAllocations,
+      draftSourceMonth: sourceMonth,
+      draftSourceLabel: formatMonthLabel(sourceMonth),
+      isPrefilled: true
+    });
+    applied = true;
+  });
+
   renderBudgetWorkspace();
-  return true;
+  return applied;
 }
 
 function applyRecurringBudgetDefaults() {
@@ -943,53 +1039,59 @@ function applyRecurringBudgetDefaults() {
   }
 
   let appliedCount = 0;
-  budgetState.context.entries.forEach(group => {
-    group.rows.forEach(row => {
-      if (!row.recurring.enabled || row.recurring.cadence !== 'monthly') {
-        return;
-      }
+  budgetState.visibleMonths.forEach(month => {
+    budgetState.context.entries.forEach(group => {
+      group.rows.forEach(row => {
+        if (!row.recurring.enabled || row.recurring.cadence !== 'monthly') {
+          return;
+        }
 
-      updateBudgetDraftEntry(row.entryKey, { assigned: row.recurring.amount });
-      appliedCount += 1;
+        updateBudgetDraftEntry(month, row.entryKey, { assigned: row.recurring.amount });
+        appliedCount += 1;
+      });
     });
   });
   renderBudgetWorkspace();
   return appliedCount;
 }
 
-async function saveBudgetMonth() {
+async function saveBudgetMonths(months = budgetState.visibleMonths) {
   if (!budgetState.context) {
     return;
   }
 
-  const existingAllocations = budgetState.context.budgetAllocations
-    .filter(allocation => allocation.month === budgetState.selectedMonth);
+  for (const month of months) {
+    const draftAllocations = budgetState.draftAllocationsByMonth.get(month) || new Map();
+    const existingAllocations = budgetState.context.budgetAllocations
+      .filter(allocation => allocation.month === month);
 
-  await Promise.all(existingAllocations.map(allocation => cache.remove('budgetAllocations', { id: allocation.id })));
+    await Promise.all(existingAllocations.map(allocation => cache.remove('budgetAllocations', { id: allocation.id })));
 
-  const rows = budgetState.context.entries.flatMap(group => group.rows);
-  const allocationsToInsert = rows
-    .map(row => {
-      const assigned = getAssignedAmountForEntry(row, budgetState.draftAllocations);
-      const note = getNoteForEntry(row, budgetState.draftAllocations).trim();
-      const activity = getActivityAmountForEntry(budgetState.context, budgetState.selectedMonth, row);
+    const rows = budgetState.context.entries.flatMap(group => group.rows);
+    const allocationsToInsert = rows
+      .map(row => {
+        const assigned = getAssignedAmountForEntry(row, draftAllocations);
+        const note = getNoteForEntry(row, draftAllocations).trim();
+        const activity = getActivityAmountForEntry(budgetState.context, month, row);
 
-      if (assigned === 0 && !note) {
-        return null;
-      }
+        if (assigned === 0 && !note) {
+          return null;
+        }
 
-      return new BudgetAllocation(
-        budgetState.selectedMonth,
-        row.categoryId,
-        row.subCategoryId,
-        assigned,
-        activity,
-        note
-      );
-    })
-    .filter(Boolean);
+        return new BudgetAllocation(
+          month,
+          row.categoryId,
+          row.subCategoryId,
+          assigned,
+          activity,
+          note
+        );
+      })
+      .filter(Boolean);
 
-  await Promise.all(allocationsToInsert.map(allocation => cache.insert('budgetAllocations', allocation)));
+    await Promise.all(allocationsToInsert.map(allocation => cache.insert('budgetAllocations', allocation)));
+  }
+
   await loadBudgetView({ month: budgetState.selectedMonth });
 }
 
@@ -1006,9 +1108,11 @@ async function loadBudgetView(options = {}) {
     .filter(account => !account.offBudget)
     .reduce((sum, account) => sum + Number(account.currentBalance || 0), 0);
   const entries = buildBudgetEntryDefinitions(categories, subCategories, transactions, budgetAllocations);
+  const visibleMonths = getVisibleBudgetMonths(targetMonth);
 
   budgetState.selectedMonth = targetMonth;
   budgetState.loadedMonth = targetMonth;
+  budgetState.visibleMonths = visibleMonths;
   budgetState.context = {
     availableCash,
     budgetAllocations,
@@ -1017,12 +1121,12 @@ async function loadBudgetView(options = {}) {
     savedAllocationLookup: buildSavedAllocationLookup(budgetAllocations),
     activityLookup: buildBudgetActivityLookup(transactions)
   };
-
-  const nextDraftState = buildBudgetDraftAllocations(budgetState.context, targetMonth);
-  budgetState.draftAllocations = nextDraftState.draftAllocations;
-  budgetState.draftSourceMonth = nextDraftState.draftSourceMonth;
-  budgetState.draftSourceLabel = nextDraftState.draftSourceLabel;
-  budgetState.isPrefilled = nextDraftState.isPrefilled;
+  budgetState.draftAllocationsByMonth = new Map();
+  budgetState.draftMetaByMonth = new Map();
+  visibleMonths.forEach(month => {
+    setMonthDraftState(month, buildBudgetDraftAllocations(budgetState.context, month));
+  });
+  budgetState.expandedNoteKey = null;
 
   renderBudgetWorkspace();
 }
@@ -2547,11 +2651,11 @@ window.onload = () => {
   });
   document.getElementById('budget-copy-previous').addEventListener('click', async () => {
     if (!copyBudgetFromPreviousMonth()) {
-      setStatus('No previous saved month was found to copy.');
+      setStatus('No previous saved month was found for the visible budget window.');
       return;
     }
 
-    setStatus(`Copied assigned amounts into ${formatMonthLabel(budgetState.selectedMonth)}.`);
+    setStatus(`Copied assigned amounts into the visible three-month budget window.`);
   });
   document.getElementById('budget-apply-recurring').addEventListener('click', async () => {
     const appliedCount = applyRecurringBudgetDefaults();
@@ -2565,16 +2669,16 @@ window.onload = () => {
   });
   document.getElementById('budget-auto-apply').addEventListener('click', async () => {
     materializeBudgetPrefillSuggestions();
-    await saveBudgetMonth();
-    setStatus(`Saved ${formatMonthLabel(budgetState.selectedMonth)} after applying the current draft.`);
+    await saveBudgetMonths();
+    setStatus(`Saved the visible three-month budget window after applying the current prefills.`);
   });
   document.getElementById('budget-reset-draft').addEventListener('click', () => {
-    resetBudgetDraftForSelectedMonth();
-    setStatus(`Reset the draft for ${formatMonthLabel(budgetState.selectedMonth)}.`);
+    resetBudgetDraftForVisibleMonths();
+    setStatus('Reset the visible three-month budget draft.');
   });
   document.getElementById('budget-save-month').addEventListener('click', async () => {
-    await saveBudgetMonth();
-    setStatus(`Saved the budget for ${formatMonthLabel(budgetState.selectedMonth)}.`);
+    await saveBudgetMonths();
+    setStatus('Saved the visible three-month budget window.');
   });
   document.getElementById('budget-view').addEventListener('click', (e) => {
     const noteToggleButton = e.target.closest('[data-note-toggle-entry-key]');
@@ -2583,7 +2687,7 @@ window.onload = () => {
       return;
     }
 
-    toggleBudgetNoteEditor(noteToggleButton.dataset.noteToggleEntryKey);
+    toggleBudgetNoteEditor(noteToggleButton.dataset.month, noteToggleButton.dataset.noteToggleEntryKey);
   });
   document.getElementById('budget-view').addEventListener('keydown', (e) => {
     if (!e.target.classList.contains('budget-assigned-input')) {
@@ -2604,6 +2708,7 @@ window.onload = () => {
   document.getElementById('budget-view').addEventListener('input', (e) => {
     if (e.target.classList.contains('budget-assigned-input')) {
       updateBudgetDraftEntry(
+        e.target.dataset.month,
         e.target.dataset.entryKey,
         { assigned: e.target.value === '' ? null : (parseFloat(e.target.value) || 0) }
       );
@@ -2613,6 +2718,7 @@ window.onload = () => {
 
     if (e.target.classList.contains('budget-note-textarea')) {
       updateBudgetDraftEntry(
+        e.target.dataset.month,
         e.target.dataset.noteEntryKey,
         { note: e.target.value }
       );

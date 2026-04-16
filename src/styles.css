@@ -531,6 +531,37 @@ textarea {
   gap: 1rem;
 }
 
+.budget-month-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.budget-month-column {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.budget-month-column-header {
+  display: grid;
+  gap: 0.4rem;
+  padding: 1.05rem 1.1rem;
+  border: 1px solid rgba(22, 51, 49, 0.08);
+  border-radius: 22px;
+  background: rgba(255, 253, 248, 0.9);
+}
+
+.budget-month-column-header h4,
+.budget-month-column-header p {
+  margin: 0;
+}
+
+.budget-month-column-hint {
+  color: var(--muted);
+}
+
 .budget-groups {
   display: grid;
   gap: 1rem;
@@ -1068,6 +1099,10 @@ select.txn-input {
   .budget-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .budget-month-grid {
+    grid-template-columns: 1fr;
   }
 
   .budget-month-nav,
