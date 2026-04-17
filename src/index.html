@@ -51,8 +51,13 @@
           <h2 id="section-title">Accounts Overview</h2>
           <p id="section-subtitle" class="section-subtitle">Track the cash you have available right now.</p>
         </div>
-        <div id="status-pill" class="status-pill" aria-live="polite" aria-atomic="true"></div>
-      </header>
+        <div id="status-pill" class="status-pill" aria-live="polite" aria-atomic="true">
+          <span id="status-pill-message" class="status-pill-message"></span>
+          <button type="button" id="status-pill-close" class="status-pill-close" aria-label="Dismiss notification" title="Dismiss notification">
+            &times;
+          </button>
+        </div>
+        </header>
 
       <section class="hero-grid">
         <article class="hero-card balance-card">
@@ -139,12 +144,12 @@
               <label>
                 <span id="cat-name-label">Category Group</span>
                 <input type="text" id="cat-name" placeholder="Groceries, Housing, Utilities..." required>
-              </label>
-              <div id="subcat-fields">
-                <label>
-                  <span id="subcat-name-label">First Subcategory</span>
-                  <input type="text" id="subcat-name" placeholder="Dining Out, Electricity, Rent/Mortgage...">
                 </label>
+                <div id="subcat-fields">
+                  <label id="subcat-name-field">
+                    <span id="subcat-name-label">First Subcategory</span>
+                    <input type="text" id="subcat-name" placeholder="Dining Out, Electricity, Rent/Mortgage...">
+                  </label>
                 <div class="form-row">
                   <label>
                     <span>Target</span>
@@ -170,6 +175,9 @@
                     <span>Recurring Cadence</span>
                     <select id="cat-recurring-cadence">
                       <option value="monthly">Monthly</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="quarterly">Quarterly</option>
+                      <option value="yearly">Yearly</option>
                     </select>
                   </label>
                 </div>
@@ -204,57 +212,68 @@
         </div>
       </div>
 
-      <div id="transactions" class="section">
-        <section class="panel single-panel">
-          <div class="panel-heading">
-            <p class="eyebrow">Transactions</p>
-            <h3>Activity table</h3>
-            <p class="panel-hint">Add, edit, delete, or import transactions inline.</p>
-            <div class="import-bar">
-              <input type="file" id="transaction-csv-file" accept=".csv,text/csv">
-              <button type="button" id="transaction-import-button" class="secondary-button">Import CSV</button>
+        <div id="transactions" class="section">
+          <section class="panel single-panel">
+            <div class="panel-heading transactions-heading">
+              <div class="transactions-heading-copy">
+                <p class="eyebrow">Transactions</p>
+                <h3>Activity table</h3>
+                <p class="panel-hint">Add, edit, delete, or import transactions inline.</p>
+              </div>
+              <div class="transactions-toolbar">
+                <div class="transactions-import-panel">
+                  <div class="import-bar">
+                    <input type="file" id="transaction-csv-file" accept=".csv,text/csv">
+                    <button type="button" id="transaction-import-button" class="secondary-button">Import CSV</button>
+                  </div>
+                  <p class="panel-hint subtle transactions-import-hint">Required CSV columns: date, account, payee, category, amount. Optional: subcategory, memo.</p>
+                </div>
+              </div>
             </div>
-            <p class="panel-hint subtle">Required CSV columns: date, account, payee, category, amount. Optional: subcategory, memo.</p>
-          </div>
-          <div id="transactions-list" class="transaction-table-shell"></div>
-        </section>
-      </div>
+            <div class="transaction-grid-toolbar">
+              <button type="button" id="transaction-filters-toggle" class="secondary-button compact-button">Filters</button>
+            </div>
+            <div id="transactions-list" class="transaction-table-shell"></div>
+          </section>
+        </div>
 
-      <div id="budget" class="section">
-        <section class="panel budget-toolbar-panel">
-          <div class="budget-toolbar">
-            <div class="budget-month-nav" aria-label="Budget month navigation">
-              <button type="button" id="budget-month-prev" class="secondary-button compact-button">Previous</button>
+        <div id="budget" class="section">
+          <section class="panel budget-toolbar-panel">
+            <div class="budget-toolbar">
+              <div class="budget-month-nav" aria-label="Budget month navigation">
+                <button type="button" id="budget-month-prev" class="secondary-button compact-button">Previous</button>
               <div class="budget-month-labels">
                 <div class="centered">
                   <p class="eyebrow">Selected Month</p>
                   <h3 id="budget-month-label">Month</h3>
                 </div>
               </div>
-              <button type="button" id="budget-month-next" class="secondary-button compact-button">Next</button>
-              <button type="button" id="budget-month-current" class="secondary-button compact-button">Current Month</button>
+                <button type="button" id="budget-month-next" class="secondary-button compact-button">Next</button>
+                <button type="button" id="budget-month-current" class="secondary-button compact-button">Current Month</button>
+              </div>
             </div>
-            <div class="budget-helper-actions">
-              <button type="button" id="budget-copy-previous" class="secondary-button compact-button">Copy Previous Month</button>
-              <button type="button" id="budget-apply-recurring" class="secondary-button compact-button">Apply Recurring</button>
-              <button type="button" id="budget-auto-apply" class="secondary-button compact-button">Auto-Apply Prefills</button>
-              <button type="button" id="budget-reset-draft" class="secondary-button compact-button">Reset Draft</button>
-              <button type="button" id="budget-save-month" class="primary-button compact-button">Save Visible Months</button>
-            </div>
-          </div>
-          <p id="budget-draft-hint" class="panel-hint">Three-month budget drafts stay editable until you save the visible months.</p>
-        </section>
-        <section id="budget-summary-cards" class="budget-summary-grid"></section>
-        <div class="section-grid budget-layout">
-          <section class="panel list-panel single-panel">
-            <div class="panel-heading">
-              <h3>Plan every dollar</h3>
-              <p class="panel-hint">Assign money at the row level, review carryover, and let transactions drive Activity automatically.</p>
-            </div>
-            <div id="budget-view" class="budget-workspace"></div>
+            <p id="budget-draft-hint" class="panel-hint">Three-month budget drafts stay editable until you save the visible months.</p>
           </section>
+          <section id="budget-summary-cards" class="budget-summary-grid"></section>
+          <div class="section-grid budget-layout">
+            <section class="panel list-panel single-panel">
+              <div class="panel-heading budget-workspace-heading">
+                <div class="budget-workspace-heading-copy">
+                  <h3>Plan every dollar</h3>
+                  <p class="panel-hint">Assign money at the row level, review carryover, and let transactions drive Activity automatically.</p>
+                </div>
+                <div class="budget-helper-actions budget-workspace-actions">
+                  <button type="button" id="budget-copy-previous" class="secondary-button compact-button">Copy Previous Month</button>
+                  <button type="button" id="budget-apply-recurring" class="secondary-button compact-button">Apply Recurring</button>
+                  <button type="button" id="budget-auto-apply" class="secondary-button compact-button">Auto-Apply Prefills</button>
+                  <button type="button" id="budget-reset-draft" class="secondary-button compact-button">Reset Draft</button>
+                  <button type="button" id="budget-save-month" class="primary-button compact-button">Save Visible Months</button>
+                </div>
+              </div>
+              <div id="budget-view" class="budget-workspace"></div>
+            </section>
+          </div>
         </div>
-      </div>
     </main>
   </div>
 

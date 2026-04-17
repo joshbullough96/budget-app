@@ -18,6 +18,22 @@ let subCategorySortables = [];
 let editingTransactionId = null;
 let transactionSubCategoriesCache = [];
 let budgetDirtyToastActive = false;
+let transactionTableState = {
+  sortKey: 'date',
+  sortDirection: 'desc',
+  filtersVisible: false,
+  filters: {
+    date: '',
+    account: '',
+    payee: '',
+    category: '',
+    subCategory: '',
+    memo: '',
+    amount: '',
+    balance: ''
+  }
+};
+let transactionFilterFocusState = null;
 let budgetState = {
   selectedMonth: '',
   loadedMonth: '',
@@ -153,15 +169,26 @@ async function loadCategories() {
   }
 
   list.innerHTML = categories.map(cat => {
-    const categorySubCategories = sortItemsForDisplay(
+      const categorySubCategories = sortItemsForDisplay(
       subCategories.filter(subCategory => subCategory.categoryId === cat.id)
     );
-    const categoryStatus = cat.offBudget ? 'Off Budget' : 'On Budget';
-    const subCategoryCount = `${categorySubCategories.length} ${categorySubCategories.length === 1 ? 'subcategory' : 'subcategories'}`;
-    const noteMarkup = cat.note
-      ? `<p class="data-card-note">${escapeHtml(cat.note)}</p>`
-      : '';
-    const subCategoryMarkup = categorySubCategories.length
+      const categoryStatus = cat.offBudget ? 'Off Budget' : 'On Budget';
+      const categoryTarget = getBudgetTarget(cat);
+      const categoryRecurring = getBudgetRecurring(cat);
+      const categoryMeta = [
+        categoryTarget.type ? `${TARGET_TYPE_LABELS[categoryTarget.type].toLowerCase()} target` : '',
+        categoryTarget.amount ? formatCurrency(categoryTarget.amount) : '',
+        categoryRecurring.enabled ? `Recurring ${RECURRING_CADENCE_LABELS[categoryRecurring.cadence].toLowerCase()} ${formatCurrency(categoryRecurring.amount)}` : ''
+      ].filter(Boolean).join(' | ');
+      const budgetableSubCategoryCount = categorySubCategories.filter(subCategory => !subCategory.offBudget).length;
+      const subCategoryCount = `${categorySubCategories.length} ${categorySubCategories.length === 1 ? 'subcategory' : 'subcategories'}`;
+      const noteMarkup = cat.note
+        ? `<p class="data-card-note">${escapeHtml(cat.note)}</p>`
+        : '';
+      const categoryBudgetMarkup = categoryMeta
+        ? `<p class="data-card-note">${escapeHtml(categoryMeta)}</p>`
+        : '';
+      const subCategoryMarkup = categorySubCategories.length
       ? `<div class="sub-list" data-category-id="${cat.id}">${categorySubCategories.map(subCategory => `
           <div class="sub-item sortable-sub-item" data-item-id="${subCategory.id}">
             <div class="data-card-title-group">
@@ -174,7 +201,7 @@ async function loadCategories() {
               </div>
             </div>
             <div class="sub-item-actions">
-              <div class="pill ${subCategory.offBudget ? 'warn' : ''}">${getGoalLabel(getSubCategoryTarget(subCategory).type, getSubCategoryTarget(subCategory).amount)}</div>
+              <div class="pill ${subCategory.offBudget ? 'warn' : ''}">${getGoalLabel(getBudgetTarget(subCategory).type, getBudgetTarget(subCategory).amount)}</div>
               <div class="icon-actions">
                 <button type="button" class="icon-button" onclick="editSubCategory('${subCategory.id}')" aria-label="Edit subcategory" title="Edit subcategory">
                   ${getActionIcon('edit')}
@@ -184,9 +211,21 @@ async function loadCategories() {
                 </button>
               </div>
             </div>
+            </div>
+          `).join('')}</div>`
+      : `
+        <div class="sub-item category-level-summary">
+          <div class="data-card-title-group">
+            <div>
+              <strong>Category-Level Budget</strong>
+              <p>${escapeHtml(categoryMeta || 'No target or recurring amount set yet.')}</p>
+            </div>
           </div>
-        `).join('')}</div>`
-      : '<p class="empty-state">No subcategories yet. Add one from the form to start budgeting within this group.</p>';
+          <div class="sub-item-actions">
+            <div class="pill ${cat.offBudget ? 'warn' : ''}">${getGoalLabel(categoryTarget.type, categoryTarget.amount)}</div>
+          </div>
+        </div>
+      `;
 
     return `
       <article class="data-card category-card sortable-card" data-item-id="${cat.id}">
@@ -196,12 +235,13 @@ async function loadCategories() {
               <div class="drag-handle" aria-hidden="true" title="Drag to reorder">
                 ${getActionIcon('drag')}
               </div>
-              <div>
-                <h4>${escapeHtml(cat.name)}</h4>
-                ${noteMarkup}
+                <div>
+                  <h4>${escapeHtml(cat.name)}</h4>
+                  ${noteMarkup}
+                  ${categoryBudgetMarkup}
+                </div>
               </div>
             </div>
-          </div>
           <div class="card-header-actions">
             <div class="pill ${cat.offBudget ? 'warn' : ''}">${categoryStatus}</div>
             <div class="icon-actions">
@@ -214,11 +254,11 @@ async function loadCategories() {
               </button>
             </div>
           </div>
-        </div>
-        <div class="data-card-footer">
-          <p>${subCategoryCount}</p>
-          <p>${categorySubCategories.filter(subCategory => !subCategory.offBudget).length} on-budget</p>
-        </div>
+          </div>
+          <div class="data-card-footer">
+            <p>${subCategoryCount}</p>
+            <p>${budgetableSubCategoryCount} on-budget</p>
+          </div>
         ${subCategoryMarkup}
       </article>
     `;
@@ -246,37 +286,48 @@ async function loadTransactions() {
   const categoryMap = new Map(categories.map(category => [category.id, category]));
   const subCategoryMap = new Map(subCategories.map(subCategory => [subCategory.id, subCategory]));
   transactionSubCategoriesCache = subCategories;
-  const sortedTransactions = transactions
-    .slice()
-    .sort((left, right) => parseDateValue(right.date) - parseDateValue(left.date));
+  const visibleTransactions = getFilteredAndSortedTransactions(transactions, accountMap, categoryMap, subCategoryMap);
 
-  const emptyMarkup = !sortedTransactions.length
+  const emptyMarkup = !visibleTransactions.length
     ? `
-      <div class="empty-state transaction-empty-state">
-        <h4>No transactions yet</h4>
-        <p>Use the first row to add your first transaction inline.</p>
-      </div>
-    `
+        <div class="empty-state transaction-empty-state">
+          <h4>No matching transactions</h4>
+          <p>Adjust the column filters or add a new transaction from the first row.</p>
+        </div>
+      `
     : '';
 
   list.innerHTML = `
-    <div class="transaction-table">
-      <div class="transaction-row transaction-head">
-        <div>Date</div>
-        <div>Account</div>
-        <div>Payee</div>
-        <div>Category</div>
-        <div>Subcategory</div>
-        <div>Memo</div>
-        <div>Amount</div>
-        <div>Balance</div>
-        <div>Actions</div>
-      </div>
-      ${renderTransactionEditorRow({ rowMode: 'create', accounts, categories, subCategories })}
-      ${sortedTransactions.map(transaction => {
-        if (editingTransactionId === transaction.id) {
-          return renderTransactionEditorRow({
-            rowMode: 'edit',
+      <div class="transaction-table">
+        <div class="transaction-row transaction-head">
+          <div><button type="button" class="transaction-sort-button" data-sort-key="date">Date${getTransactionSortIndicator('date')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="account">Account${getTransactionSortIndicator('account')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="payee">Payee${getTransactionSortIndicator('payee')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="category">Category${getTransactionSortIndicator('category')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="subCategory">Subcategory${getTransactionSortIndicator('subCategory')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="memo">Memo${getTransactionSortIndicator('memo')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="amount">Amount${getTransactionSortIndicator('amount')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="balance">Balance${getTransactionSortIndicator('balance')}</button></div>
+          <div>Actions</div>
+        </div>
+        ${transactionTableState.filtersVisible ? `
+          <div class="transaction-row transaction-filter-row">
+            <div><input type="text" class="txn-filter-input" data-filter-key="date" value="${escapeHtml(transactionTableState.filters.date)}" placeholder="Filter"></div>
+            <div><input type="text" class="txn-filter-input" data-filter-key="account" value="${escapeHtml(transactionTableState.filters.account)}" placeholder="Filter"></div>
+            <div><input type="text" class="txn-filter-input" data-filter-key="payee" value="${escapeHtml(transactionTableState.filters.payee)}" placeholder="Filter"></div>
+            <div><input type="text" class="txn-filter-input" data-filter-key="category" value="${escapeHtml(transactionTableState.filters.category)}" placeholder="Filter"></div>
+            <div><input type="text" class="txn-filter-input" data-filter-key="subCategory" value="${escapeHtml(transactionTableState.filters.subCategory)}" placeholder="Filter"></div>
+            <div><input type="text" class="txn-filter-input" data-filter-key="memo" value="${escapeHtml(transactionTableState.filters.memo)}" placeholder="Filter"></div>
+            <div><input type="text" class="txn-filter-input" data-filter-key="amount" value="${escapeHtml(transactionTableState.filters.amount)}" placeholder="Filter"></div>
+            <div><input type="text" class="txn-filter-input" data-filter-key="balance" value="${escapeHtml(transactionTableState.filters.balance)}" placeholder="Filter"></div>
+            <div><button type="button" class="secondary-button compact-button transaction-clear-filters">Clear</button></div>
+          </div>
+        ` : ''}
+        ${renderTransactionEditorRow({ rowMode: 'create', accounts, categories, subCategories })}
+        ${visibleTransactions.map(({ transaction }) => {
+          if (editingTransactionId === transaction.id) {
+            return renderTransactionEditorRow({
+              rowMode: 'edit',
             transaction,
             accounts,
             categories,
@@ -284,11 +335,23 @@ async function loadTransactions() {
           });
         }
 
-        return renderTransactionDisplayRow(transaction, accountMap, categoryMap, subCategoryMap);
-      }).join('')}
+          return renderTransactionDisplayRow(transaction, accountMap, categoryMap, subCategoryMap);
+        }).join('')}
     </div>
     ${emptyMarkup}
   `;
+
+  if (transactionFilterFocusState?.key) {
+    const filterInput = list.querySelector(`.txn-filter-input[data-filter-key="${transactionFilterFocusState.key}"]`);
+
+    if (filterInput) {
+      filterInput.focus();
+
+      if (typeof transactionFilterFocusState.selectionStart === 'number' && typeof transactionFilterFocusState.selectionEnd === 'number') {
+        filterInput.setSelectionRange(transactionFilterFocusState.selectionStart, transactionFilterFocusState.selectionEnd);
+      }
+    }
+  }
 }
 
 function shiftMonthValue(monthValue, offset) {
@@ -344,42 +407,42 @@ function buildBudgetEntryDefinitions(categories, subCategories, transactions = [
         || budgetAllocations.some(allocation => allocation.categoryId === category.id && !allocation.subCategoryId)
       );
       const rows = visibleSubCategories.length
-        ? visibleSubCategories.map(subCategory => ({
-            entryKey: buildBudgetEntryKey(category.id, subCategory.id),
-            categoryId: category.id,
-            subCategoryId: subCategory.id,
-            categoryName: category.name,
-            subCategoryName: subCategory.name,
-            note: subCategory.note || '',
-            target: getSubCategoryTarget(subCategory),
-            recurring: getSubCategoryRecurring(subCategory),
-            isCategoryFallback: false
-          }))
-        : [{
-            entryKey: buildBudgetEntryKey(category.id, null),
+          ? visibleSubCategories.map(subCategory => ({
+              entryKey: buildBudgetEntryKey(category.id, subCategory.id),
+              categoryId: category.id,
+              subCategoryId: subCategory.id,
+              categoryName: category.name,
+              subCategoryName: subCategory.name,
+              note: subCategory.note || '',
+              target: getBudgetTarget(subCategory),
+              recurring: getBudgetRecurring(subCategory),
+              isCategoryFallback: false
+            }))
+          : [{
+              entryKey: buildBudgetEntryKey(category.id, null),
+              categoryId: category.id,
+              subCategoryId: null,
+              categoryName: category.name,
+              subCategoryName: '',
+              note: category.note || '',
+              target: getBudgetTarget(category),
+              recurring: getBudgetRecurring(category),
+              isCategoryFallback: true
+            }];
+
+        if (needsCategoryFallbackRow) {
+          rows.unshift({
+          entryKey: buildBudgetEntryKey(category.id, null),
             categoryId: category.id,
             subCategoryId: null,
             categoryName: category.name,
-            subCategoryName: '',
-            note: category.note || '',
-            target: { type: '', amount: 0 },
-            recurring: { enabled: false, amount: 0, cadence: 'monthly' },
+            subCategoryName: 'Category-Level Activity',
+            note: 'Legacy or uncategorized entries in this group',
+            target: getBudgetTarget(category),
+            recurring: getBudgetRecurring(category),
             isCategoryFallback: true
-          }];
-
-      if (needsCategoryFallbackRow) {
-        rows.unshift({
-          entryKey: buildBudgetEntryKey(category.id, null),
-          categoryId: category.id,
-          subCategoryId: null,
-          categoryName: category.name,
-          subCategoryName: 'Category-Level Activity',
-          note: 'Legacy or uncategorized entries in this group',
-          target: { type: '', amount: 0 },
-          recurring: { enabled: false, amount: 0, cadence: 'monthly' },
-          isCategoryFallback: true
-        });
-      }
+          });
+        }
 
       return {
         id: category.id,
@@ -734,7 +797,7 @@ function renderBudgetMonthGrid(month, model, draftMeta, isSelected = false) {
               <div class="budget-group-header">
                 <div class="budget-group-copy">
                   <h4>${escapeHtml(group.name)}</h4>
-                  <p>${escapeHtml(group.note || `${group.rows.length} ${group.rows.length === 1 ? 'budget row' : 'budget rows'}`)}</p>
+                  <p>${escapeHtml(`${group.rows.filter(row => !row.isCategoryFallback).length} ${group.rows.filter(row => !row.isCategoryFallback).length === 1 ? 'subcategory' : 'subcategories'}`)}</p>
                   <div class="budget-group-totals">
                     <span class="pill" data-category-assigned="${month}::${group.id}">Assigned ${formatCurrency(group.totals.assigned)}</span>
                     <span class="pill ${group.totals.activity < 0 ? 'warn' : ''}" data-category-activity="${month}::${group.id}">Activity ${formatCurrency(group.totals.activity)}</span>
@@ -759,12 +822,12 @@ function renderBudgetMonthGrid(month, model, draftMeta, isSelected = false) {
                       </div>
                       <p>${escapeHtml(
                         [
-                          row.target.type ? `${TARGET_TYPE_LABELS[row.target.type]} target` : '',
-                          row.target.amount ? formatCurrency(row.target.amount) : '',
-                          row.recurring.enabled ? `Recurring ${row.recurring.cadence} ${formatCurrency(row.recurring.amount)}` : '',
-                          row.note
-                        ].filter(Boolean).join(' | ') || (row.isCategoryFallback ? 'Category-level budget row' : 'Flexible')
-                      )}</p>
+                            row.target.type ? `${TARGET_TYPE_LABELS[row.target.type]} target` : '',
+                            row.target.amount ? formatCurrency(row.target.amount) : '',
+                            row.recurring.enabled ? `Recurring ${RECURRING_CADENCE_LABELS[row.recurring.cadence].toLowerCase()} ${formatCurrency(row.recurring.amount)}` : '',
+                            row.note
+                          ].filter(Boolean).join(' | ') || (row.isCategoryFallback ? 'Category-level budget row' : 'Flexible')
+                        )}</p>
                     </div>
                     <div class="amount budget-row-carryover">${formatCurrency(row.carryover)}</div>
                     <div class="budget-assigned-field">
@@ -1057,43 +1120,39 @@ function copyBudgetFromPreviousMonth() {
     return false;
   }
 
-  let applied = false;
+  const month = budgetState.selectedMonth || budgetState.visibleMonths[1] || budgetState.visibleMonths[0];
+  const sourceMonth = getNearestPriorBudgetMonth(month, budgetState.context.budgetAllocations);
 
-  budgetState.visibleMonths.forEach(month => {
-    const sourceMonth = getNearestPriorBudgetMonth(month, budgetState.context.budgetAllocations);
+  if (!sourceMonth) {
+    return false;
+  }
 
-    if (!sourceMonth) {
-      return;
-    }
+  const draftAllocations = new Map(budgetState.context.entries.flatMap(group => group.rows).map(row => {
+    const sourceAllocation = budgetState.context.savedAllocationLookup.get(
+      buildBudgetMonthEntryKey(sourceMonth, row.categoryId, row.subCategoryId)
+    );
 
-    const draftAllocations = new Map(budgetState.context.entries.flatMap(group => group.rows).map(row => {
-      const sourceAllocation = budgetState.context.savedAllocationLookup.get(
-        buildBudgetMonthEntryKey(sourceMonth, row.categoryId, row.subCategoryId)
-      );
+    return [
+      row.entryKey,
+      {
+        categoryId: row.categoryId,
+        subCategoryId: row.subCategoryId,
+        assigned: Number(sourceAllocation?.assigned || 0),
+        suggestedAssigned: 0,
+        note: ''
+      }
+    ];
+  }));
 
-      return [
-        row.entryKey,
-        {
-          categoryId: row.categoryId,
-          subCategoryId: row.subCategoryId,
-          assigned: Number(sourceAllocation?.assigned || 0),
-          suggestedAssigned: 0,
-          note: ''
-        }
-      ];
-    }));
-
-    setMonthDraftState(month, {
-      draftAllocations,
-      draftSourceMonth: sourceMonth,
-      draftSourceLabel: formatMonthLabel(sourceMonth),
-      isPrefilled: true
-    });
-    applied = true;
+  setMonthDraftState(month, {
+    draftAllocations,
+    draftSourceMonth: sourceMonth,
+    draftSourceLabel: formatMonthLabel(sourceMonth),
+    isPrefilled: true
   });
 
   renderBudgetWorkspace();
-  return applied;
+  return true;
 }
 
 function applyRecurringBudgetDefaults() {
@@ -1105,11 +1164,19 @@ function applyRecurringBudgetDefaults() {
   budgetState.visibleMonths.forEach(month => {
     budgetState.context.entries.forEach(group => {
       group.rows.forEach(row => {
-        if (!row.recurring.enabled || row.recurring.cadence !== 'monthly') {
+        if (!row.recurring.enabled) {
           return;
         }
 
-        updateBudgetDraftEntry(month, row.entryKey, { assigned: row.recurring.amount });
+        const monthlyAllocation = getMonthlyRecurringAllocation(month, row.recurring);
+
+        if (!monthlyAllocation) {
+          return;
+        }
+
+        updateBudgetDraftEntry(month, row.entryKey, {
+          assigned: Number(monthlyAllocation.toFixed(2))
+        });
         appliedCount += 1;
       });
     });
@@ -1235,6 +1302,7 @@ function updateDashboardStats(accounts, categories, subCategories) {
 
 function clearStatus() {
   const statusPill = document.getElementById('status-pill');
+  const statusMessage = document.getElementById('status-pill-message');
 
   if (!statusPill) {
     return;
@@ -1246,13 +1314,16 @@ function clearStatus() {
   }
 
   statusPill.classList.remove('visible', 'persistent');
-  statusPill.textContent = '';
+  if (statusMessage) {
+    statusMessage.textContent = '';
+  }
 }
 
 function setStatus(message, options = {}) {
   const statusPill = document.getElementById('status-pill');
+  const statusMessage = document.getElementById('status-pill-message');
 
-  if (!statusPill) {
+  if (!statusPill || !statusMessage) {
     return;
   }
 
@@ -1260,7 +1331,7 @@ function setStatus(message, options = {}) {
     clearTimeout(statusToastTimeoutId);
   }
 
-  statusPill.textContent = message;
+  statusMessage.textContent = message;
   statusPill.classList.add('visible');
   statusPill.classList.toggle('persistent', Boolean(options.persist));
 
@@ -1271,6 +1342,7 @@ function setStatus(message, options = {}) {
 
   statusToastTimeoutId = window.setTimeout(() => {
     statusPill.classList.remove('visible', 'persistent');
+    statusMessage.textContent = '';
     statusToastTimeoutId = null;
   }, 3000);
 }
@@ -1351,14 +1423,14 @@ function readRecurringFormValues() {
   return {
     enabled: document.getElementById('cat-recurring-enabled').checked,
     amount: parseFloat(document.getElementById('cat-recurring-amount').value) || 0,
-    cadence: document.getElementById('cat-recurring-cadence').value || 'monthly'
+    cadence: normalizeRecurringCadence(document.getElementById('cat-recurring-cadence').value)
   };
 }
 
 function populateRecurringFormValues(recurring = {}) {
   document.getElementById('cat-recurring-enabled').checked = Boolean(recurring.enabled);
   document.getElementById('cat-recurring-amount').value = Number(recurring.amount || 0) || '';
-  document.getElementById('cat-recurring-cadence').value = recurring.cadence || 'monthly';
+  document.getElementById('cat-recurring-cadence').value = normalizeRecurringCadence(recurring.cadence);
 }
 
 function setCategoryFormMode(mode, context = {}) {
@@ -1376,51 +1448,56 @@ function setCategoryFormMode(mode, context = {}) {
   const categoryNameInput = document.getElementById('cat-name');
   const subcatFields = document.getElementById('subcat-fields');
   const subcatNameInput = document.getElementById('subcat-name');
+  const subcatNameField = document.getElementById('subcat-name-field');
 
   if (mode === 'edit-category') {
     eyebrow.textContent = 'Edit Category';
     title.textContent = 'Update this category group';
     nameLabel.textContent = 'Category Group';
     noteLabel.textContent = 'Category Note';
-    offBudgetLabel.textContent = 'Mark this category group as off budget';
-    submitButton.textContent = 'Update Category';
-    categoryNameInput.readOnly = false;
-    subcatFields.classList.add('hidden');
-    subcatNameInput.required = false;
-  } else if (mode === 'add-subcategory') {
+      offBudgetLabel.textContent = 'Mark this category group as off budget';
+      submitButton.textContent = 'Update Category';
+      categoryNameInput.readOnly = false;
+      subcatFields.classList.remove('hidden');
+      subcatNameField.classList.add('hidden');
+      subcatNameInput.required = false;
+    } else if (mode === 'add-subcategory') {
     eyebrow.textContent = 'Add Subcategory';
     title.textContent = `Add a subcategory to ${context.categoryName || 'this group'}`;
     nameLabel.textContent = 'Parent Category';
     noteLabel.textContent = 'Subcategory Note';
     offBudgetLabel.textContent = 'Mark this subcategory as off budget';
     subcatNameLabel.textContent = 'Subcategory Name';
-    submitButton.textContent = 'Save Subcategory';
-    categoryNameInput.readOnly = true;
-    subcatFields.classList.remove('hidden');
-    subcatNameInput.required = true;
-  } else if (mode === 'edit-subcategory') {
+      submitButton.textContent = 'Save Subcategory';
+      categoryNameInput.readOnly = true;
+      subcatFields.classList.remove('hidden');
+      subcatNameField.classList.remove('hidden');
+      subcatNameInput.required = true;
+    } else if (mode === 'edit-subcategory') {
     eyebrow.textContent = 'Edit Subcategory';
     title.textContent = `Update ${context.subCategoryName || 'this subcategory'}`;
     nameLabel.textContent = 'Parent Category';
     noteLabel.textContent = 'Subcategory Note';
     offBudgetLabel.textContent = 'Mark this subcategory as off budget';
     subcatNameLabel.textContent = 'Subcategory Name';
-    submitButton.textContent = 'Update Subcategory';
-    categoryNameInput.readOnly = true;
-    subcatFields.classList.remove('hidden');
-    subcatNameInput.required = true;
-  } else {
+      submitButton.textContent = 'Update Subcategory';
+      categoryNameInput.readOnly = true;
+      subcatFields.classList.remove('hidden');
+      subcatNameField.classList.remove('hidden');
+      subcatNameInput.required = true;
+    } else {
     eyebrow.textContent = 'Add Category';
     title.textContent = 'Shape your spending plan';
     nameLabel.textContent = 'Category Group';
     noteLabel.textContent = 'Note';
     offBudgetLabel.textContent = 'Mark this category group as off budget';
     subcatNameLabel.textContent = 'First Subcategory';
-    submitButton.textContent = 'Save Category';
-    categoryNameInput.readOnly = false;
-    subcatFields.classList.remove('hidden');
-    subcatNameInput.required = false;
-  }
+      submitButton.textContent = 'Save Category';
+      categoryNameInput.readOnly = false;
+      subcatFields.classList.remove('hidden');
+      subcatNameField.classList.remove('hidden');
+      subcatNameInput.required = false;
+    }
 
   cancelButton.classList.toggle('hidden', mode === 'create-category');
 }
@@ -1432,6 +1509,7 @@ function resetCategoryForm() {
   document.getElementById('subcat-id').value = '';
   document.getElementById('cat-name').readOnly = false;
   document.getElementById('subcat-fields').classList.remove('hidden');
+  document.getElementById('subcat-name-field').classList.remove('hidden');
   document.getElementById('subcat-name').required = false;
   populateRecurringFormValues({ enabled: false, amount: 0, cadence: 'monthly' });
   setCategoryFormMode('create-category');
@@ -1627,6 +1705,103 @@ function formatDate(value) {
   });
 }
 
+function getTransactionSortIndicator(sortKey) {
+  if (transactionTableState.sortKey !== sortKey) {
+    return '';
+  }
+
+  return transactionTableState.sortDirection === 'asc'
+    ? ' <span class="transaction-sort-indicator" aria-hidden="true">&#8593;</span>'
+    : ' <span class="transaction-sort-indicator" aria-hidden="true">&#8595;</span>';
+}
+
+function buildTransactionViewModel(transaction, accountMap, categoryMap, subCategoryMap) {
+  const account = accountMap.get(transaction.accountId);
+  const category = categoryMap.get(transaction.categoryId);
+  const subCategory = transaction.subCategoryId ? subCategoryMap.get(transaction.subCategoryId) : null;
+  const runningBalanceValue = Number(transaction.runningBalance);
+
+  return {
+    transaction,
+    values: {
+      date: formatDate(transaction.date),
+      account: account ? account.name : 'Unknown account',
+      payee: transaction.payee || '',
+      category: category ? category.name : 'Uncategorized',
+      subCategory: subCategory ? subCategory.name : '',
+      memo: transaction.memo || '',
+      amount: formatCurrency(transaction.amount),
+      balance: Number.isFinite(runningBalanceValue) ? formatCurrency(runningBalanceValue) : ''
+    },
+    filterValues: {
+      date: [transaction.date, formatDate(transaction.date)],
+      account: [account ? account.name : 'Unknown account'],
+      payee: [transaction.payee || ''],
+      category: [category ? category.name : 'Uncategorized'],
+      subCategory: [subCategory ? subCategory.name : ''],
+      memo: [transaction.memo || ''],
+      amount: [Number(transaction.amount || 0), formatCurrency(transaction.amount)],
+      balance: [Number.isFinite(runningBalanceValue) ? runningBalanceValue : '', Number.isFinite(runningBalanceValue) ? formatCurrency(runningBalanceValue) : '']
+    },
+    raw: {
+      date: parseDateValue(transaction.date).getTime(),
+      account: account ? account.name : '',
+      payee: transaction.payee || '',
+      category: category ? category.name : '',
+      subCategory: subCategory ? subCategory.name : '',
+      memo: transaction.memo || '',
+      amount: Number(transaction.amount || 0),
+      balance: Number.isFinite(runningBalanceValue) ? runningBalanceValue : Number.NEGATIVE_INFINITY
+    }
+  };
+}
+
+function matchesTransactionFilter(value, filterValue) {
+  if (!filterValue) {
+    return true;
+  }
+
+  const normalizedFilter = filterValue.trim().toLowerCase();
+  const candidates = Array.isArray(value) ? value : [value];
+
+  return candidates.some(candidate => String(candidate || '').toLowerCase().includes(normalizedFilter));
+}
+
+function getFilteredAndSortedTransactions(transactions, accountMap, categoryMap, subCategoryMap) {
+  const models = transactions.map(transaction => buildTransactionViewModel(transaction, accountMap, categoryMap, subCategoryMap));
+  const filteredModels = models.filter(model => Object.entries(transactionTableState.filters).every(([key, filterValue]) => {
+    if (!filterValue) {
+      return true;
+    }
+
+    return matchesTransactionFilter(model.filterValues[key], filterValue);
+  }));
+
+  const direction = transactionTableState.sortDirection === 'asc' ? 1 : -1;
+  const sortKey = transactionTableState.sortKey;
+
+  filteredModels.sort((left, right) => {
+    const leftValue = left.raw[sortKey];
+    const rightValue = right.raw[sortKey];
+
+    if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+      if (leftValue !== rightValue) {
+        return (leftValue - rightValue) * direction;
+      }
+    } else {
+      const comparison = String(leftValue || '').localeCompare(String(rightValue || ''), undefined, { sensitivity: 'base' });
+
+      if (comparison !== 0) {
+        return comparison * direction;
+      }
+    }
+
+    return String(left.transaction.id).localeCompare(String(right.transaction.id));
+  });
+
+  return filteredModels;
+}
+
 function getTodayDateValue() {
   return buildLocalDateValue(new Date());
 }
@@ -1642,6 +1817,13 @@ const TARGET_TYPE_LABELS = {
   custom: 'Custom'
 };
 
+const RECURRING_CADENCE_LABELS = {
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+  quarterly: 'Quarterly',
+  yearly: 'Yearly'
+};
+
 function normalizeTargetType(rawType) {
   if (rawType === 'target') {
     return 'custom';
@@ -1654,10 +1836,46 @@ function normalizeTargetType(rawType) {
   return '';
 }
 
-function getSubCategoryTarget(subCategory) {
+function normalizeRecurringCadence(rawCadence) {
+  if (Object.prototype.hasOwnProperty.call(RECURRING_CADENCE_LABELS, rawCadence)) {
+    return rawCadence;
+  }
+
+  return 'monthly';
+}
+
+function getDaysInMonth(monthValue) {
+  const [year, month] = monthValue.split('-').map(Number);
+  return new Date(year, month, 0).getDate();
+}
+
+function getMonthlyRecurringAllocation(monthValue, recurring) {
+  if (!recurring.enabled || !Number.isFinite(Number(recurring.amount)) || Number(recurring.amount) <= 0) {
+    return 0;
+  }
+
+  const amount = Number(recurring.amount);
+  const cadence = normalizeRecurringCadence(recurring.cadence);
+
+  if (cadence === 'weekly') {
+    return amount * (getDaysInMonth(monthValue) / 7);
+  }
+
+  if (cadence === 'quarterly') {
+    return amount / 3;
+  }
+
+  if (cadence === 'yearly') {
+    return amount / 12;
+  }
+
+  return amount;
+}
+
+function getBudgetTarget(record) {
   return {
-    type: normalizeTargetType(subCategory.targetType || subCategory.goalType || ''),
-    amount: Number(subCategory.targetAmount ?? subCategory.goalAmount ?? 0)
+    type: normalizeTargetType(record.targetType || record.goalType || ''),
+    amount: Number(record.targetAmount ?? record.goalAmount ?? 0)
   };
 }
 
@@ -1677,7 +1895,7 @@ function getGoalLabel(goalType, goalAmount) {
 
 function getSubCategoryMeta(subCategory) {
   const segments = [];
-  const target = getSubCategoryTarget(subCategory);
+  const target = getBudgetTarget(subCategory);
 
   if (target.type) {
     segments.push(`${TARGET_TYPE_LABELS[target.type].toLowerCase()} target`);
@@ -1687,7 +1905,7 @@ function getSubCategoryMeta(subCategory) {
     segments.push(formatCurrency(target.amount));
   }
 
-  const recurringLabel = getSubCategoryRecurringLabel(subCategory);
+  const recurringLabel = getBudgetRecurringLabel(subCategory);
 
   if (recurringLabel) {
     segments.push(recurringLabel);
@@ -1700,22 +1918,22 @@ function getSubCategoryMeta(subCategory) {
   return segments.join(' | ') || 'Flexible';
 }
 
-function getSubCategoryRecurring(subCategory) {
+function getBudgetRecurring(record) {
   return {
-    enabled: Boolean(subCategory.recurringEnabled),
-    amount: Number(subCategory.recurringAmount || 0),
-    cadence: subCategory.recurringCadence || 'monthly'
+    enabled: Boolean(record.recurringEnabled),
+    amount: Number(record.recurringAmount || 0),
+    cadence: normalizeRecurringCadence(record.recurringCadence)
   };
 }
 
-function getSubCategoryRecurringLabel(subCategory) {
-  const recurring = getSubCategoryRecurring(subCategory);
+function getBudgetRecurringLabel(record) {
+  const recurring = getBudgetRecurring(record);
 
   if (!recurring.enabled) {
     return '';
   }
 
-  return `Recurring ${recurring.cadence} ${formatCurrency(recurring.amount)}`;
+  return `Recurring ${RECURRING_CADENCE_LABELS[recurring.cadence].toLowerCase()} ${formatCurrency(recurring.amount)}`;
 }
 
 function buildSelectOptions(items, selectedValue, placeholder) {
@@ -2423,9 +2641,9 @@ async function editCategory(categoryId) {
   document.getElementById('subcat-id').value = '';
   document.getElementById('cat-name').value = category.name || '';
   document.getElementById('subcat-name').value = '';
-  document.getElementById('cat-goal-type').value = '';
-  document.getElementById('cat-goal-amount').value = '';
-  populateRecurringFormValues({ enabled: false, amount: 0, cadence: 'monthly' });
+  document.getElementById('cat-goal-type').value = getBudgetTarget(category).type;
+  document.getElementById('cat-goal-amount').value = Number(category.targetAmount ?? category.goalAmount ?? 0) || '';
+  populateRecurringFormValues(getBudgetRecurring(category));
   document.getElementById('cat-note').value = category.note || '';
   document.getElementById('cat-off-budget').checked = Boolean(category.offBudget);
   setCategoryFormMode('edit-category');
@@ -2473,9 +2691,9 @@ async function editSubCategory(subCategoryId) {
   document.getElementById('subcat-id').value = subCategory.id;
   document.getElementById('cat-name').value = category?.name || '';
   document.getElementById('subcat-name').value = subCategory.name || '';
-  document.getElementById('cat-goal-type').value = getSubCategoryTarget(subCategory).type;
+  document.getElementById('cat-goal-type').value = getBudgetTarget(subCategory).type;
   document.getElementById('cat-goal-amount').value = Number(subCategory.targetAmount ?? subCategory.goalAmount ?? 0) || '';
-  populateRecurringFormValues(getSubCategoryRecurring(subCategory));
+  populateRecurringFormValues(getBudgetRecurring(subCategory));
   document.getElementById('cat-note').value = subCategory.note || '';
   document.getElementById('cat-off-budget').checked = Boolean(subCategory.offBudget);
   setCategoryFormMode('edit-subcategory', {
@@ -2591,6 +2809,7 @@ window.onload = () => {
   window.cancelTransactionEdit = cancelTransactionEdit;
   window.saveTransactionEdit = saveTransactionEdit;
   window.confirmDeleteTransaction = confirmDeleteTransaction;
+  document.getElementById('status-pill-close').addEventListener('click', clearStatus);
   budgetState.selectedMonth = getCurrentMonthValue();
   syncTransactionDerivedState()
     .then(async () => {
@@ -2655,12 +2874,19 @@ window.onload = () => {
     const note = document.getElementById('cat-note').value;
     const offBudget = document.getElementById('cat-off-budget').checked;
 
-    if (mode === 'edit-category') {
-      await cache.update('categories', { id: categoryId }, { $set: {
-        name,
-        note,
-        offBudget
-      } });
+      if (mode === 'edit-category') {
+        await cache.update('categories', { id: categoryId }, { $set: {
+          name,
+          targetType,
+          targetAmount,
+          goalType: targetType,
+          goalAmount: targetAmount,
+          recurringEnabled: recurring.enabled,
+          recurringAmount: recurring.amount,
+          recurringCadence: recurring.cadence,
+          note,
+          offBudget
+        } });
       await loadCategories();
       await loadTransactions();
       await loadBudgetView();
@@ -2704,7 +2930,16 @@ window.onload = () => {
     }
 
     const sortOrder = await getNextSortOrder('categories');
-    const category = new Category(name, note, offBudget, sortOrder);
+      const shouldApplyBudgetSettingsToCategory = !subCategoryName;
+      const category = new Category(
+        name,
+        note,
+        offBudget,
+        sortOrder,
+        shouldApplyBudgetSettingsToCategory ? targetType : '',
+        shouldApplyBudgetSettingsToCategory ? targetAmount : 0,
+        shouldApplyBudgetSettingsToCategory ? recurring : { enabled: false, amount: 0, cadence: 'monthly' }
+      );
     const savedCategory = await cache.insert('categories', category);
 
     if (subCategoryName) {
@@ -2723,14 +2958,65 @@ window.onload = () => {
     resetCategoryForm();
     setStatus('Category edit canceled');
   });
-  document.getElementById('transactions-list').addEventListener('change', (e) => {
-    if (e.target.classList.contains('txn-category-select')) {
-      updateTransactionRowSubcategories(e.target.closest('.transaction-editor-row'));
-    }
-  });
-  document.getElementById('transaction-import-button').addEventListener('click', async () => {
-    await importTransactionsFromCsv();
-  });
+    document.getElementById('transactions-list').addEventListener('change', (e) => {
+      if (e.target.classList.contains('txn-category-select')) {
+        updateTransactionRowSubcategories(e.target.closest('.transaction-editor-row'));
+      }
+    });
+    document.getElementById('transactions-list').addEventListener('input', (e) => {
+      if (!e.target.classList.contains('txn-filter-input')) {
+        return;
+      }
+
+      transactionFilterFocusState = {
+        key: e.target.dataset.filterKey,
+        selectionStart: e.target.selectionStart,
+        selectionEnd: e.target.selectionEnd
+      };
+      transactionTableState.filters[e.target.dataset.filterKey] = e.target.value;
+      loadTransactions();
+    });
+    document.getElementById('transactions-list').addEventListener('click', (e) => {
+      const sortButton = e.target.closest('.transaction-sort-button');
+
+      if (sortButton) {
+        const { sortKey } = sortButton.dataset;
+
+        if (transactionTableState.sortKey === sortKey) {
+          transactionTableState.sortDirection = transactionTableState.sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+          transactionTableState.sortKey = sortKey;
+          transactionTableState.sortDirection = sortKey === 'date' ? 'desc' : 'asc';
+        }
+
+        loadTransactions();
+        return;
+      }
+
+      if (e.target.closest('.transaction-clear-filters')) {
+        transactionTableState.filters = {
+          date: '',
+          account: '',
+          payee: '',
+          category: '',
+          subCategory: '',
+          memo: '',
+          amount: '',
+          balance: ''
+        };
+        transactionFilterFocusState = null;
+        loadTransactions();
+      }
+    });
+    document.getElementById('transaction-filters-toggle').addEventListener('click', () => {
+      transactionTableState.filtersVisible = !transactionTableState.filtersVisible;
+      transactionFilterFocusState = null;
+      document.getElementById('transaction-filters-toggle').classList.toggle('is-active', transactionTableState.filtersVisible);
+      loadTransactions();
+    });
+    document.getElementById('transaction-import-button').addEventListener('click', async () => {
+      await importTransactionsFromCsv();
+    });
   document.getElementById('budget-month-prev').addEventListener('click', async () => {
     budgetState.selectedMonth = shiftMonthValue(budgetState.selectedMonth || getCurrentMonthValue(), -1);
     await loadBudgetView({ month: budgetState.selectedMonth });
@@ -2745,26 +3031,32 @@ window.onload = () => {
   });
   document.getElementById('budget-copy-previous').addEventListener('click', async () => {
     if (!copyBudgetFromPreviousMonth()) {
-      setStatus('No previous saved month was found for the visible budget window.');
+      setStatus('No previous saved month was found for the active budget month.');
       return;
     }
 
-    setStatus(`Copied assigned amounts into the visible three-month budget window.`);
+    setStatus('Copied assigned amounts into the active budget month.');
   });
   document.getElementById('budget-apply-recurring').addEventListener('click', async () => {
     const appliedCount = applyRecurringBudgetDefaults();
 
     if (!appliedCount) {
-      setStatus('No monthly recurring rules were available for this budget.');
+      setStatus('No recurring rules were available for this budget.');
       return;
     }
 
-    setStatus(`Applied ${appliedCount} recurring budget amount${appliedCount === 1 ? '' : 's'}.`);
+    setStatus(`Staged ${appliedCount} recurring budget amount${appliedCount === 1 ? '' : 's'} for the visible months.`);
   });
   document.getElementById('budget-auto-apply').addEventListener('click', async () => {
-    materializeBudgetPrefillSuggestions();
-    await saveBudgetMonths();
-    setStatus(`Saved the visible three-month budget window after applying the current prefills.`);
+    const appliedCount = materializeBudgetPrefillSuggestions();
+
+    if (!appliedCount) {
+      setStatus('No prefills were available to stage for the visible budget window.');
+      return;
+    }
+
+    renderBudgetWorkspace();
+    setStatus(`Staged ${appliedCount} prefill amount${appliedCount === 1 ? '' : 's'} in the visible three-month budget window.`);
   });
   document.getElementById('budget-reset-draft').addEventListener('click', () => {
     resetBudgetDraftForVisibleMonths();
