@@ -17,6 +17,7 @@ let categoriesSortable = null;
 let subCategorySortables = [];
 let editingTransactionId = null;
 let transactionSubCategoriesCache = [];
+let budgetDirtyToastActive = false;
 let budgetState = {
   selectedMonth: '',
   loadedMonth: '',
@@ -544,6 +545,47 @@ function getNoteForEntry(entry, draftAllocations) {
   return String(draftAllocations.get(entry.entryKey)?.note || '');
 }
 
+function isBudgetEntryDirty(context, month, entry, draftAllocations) {
+  const savedAllocation = context.savedAllocationLookup.get(
+    buildBudgetMonthEntryKey(month, entry.categoryId, entry.subCategoryId)
+  );
+  const savedAssigned = Number(savedAllocation?.assigned || 0);
+  const savedNote = String(savedAllocation?.note || '');
+  const draftAssigned = getAssignedAmountForEntry(entry, draftAllocations);
+  const draftNote = getNoteForEntry(entry, draftAllocations);
+
+  return draftAssigned !== savedAssigned || draftNote.trim() !== savedNote.trim();
+}
+
+function hasBudgetUnsavedChanges() {
+  if (!budgetState.context) {
+    return false;
+  }
+
+  return budgetState.visibleMonths.some(month => {
+    const draftAllocations = getMonthDraftState(month).draftAllocations;
+
+    return budgetState.context.entries.some(group => group.rows.some(row => (
+      isBudgetEntryDirty(budgetState.context, month, row, draftAllocations)
+    )));
+  });
+}
+
+function syncBudgetDirtyStatus() {
+  const hasUnsavedChanges = hasBudgetUnsavedChanges();
+
+  if (hasUnsavedChanges) {
+    budgetDirtyToastActive = true;
+    setStatus('Budget has unsaved changes. Save the visible months to keep them.', { persist: true });
+    return;
+  }
+
+  if (budgetDirtyToastActive) {
+    budgetDirtyToastActive = false;
+    clearStatus();
+  }
+}
+
 function getActivityAmountForEntry(context, month, entry) {
   return Number(context.activityLookup.get(
     buildBudgetMonthEntryKey(month, entry.categoryId, entry.subCategoryId)
@@ -583,6 +625,7 @@ function buildBudgetPresentationModel(context, month, draftAllocations) {
       const monthlyNote = getNoteForEntry(entry, draftAllocations);
       const activity = getActivityAmountForEntry(context, month, entry);
       const available = carryover + assigned + activity;
+      const isDirty = isBudgetEntryDirty(context, month, entry, draftAllocations);
 
       return {
         ...entry,
@@ -592,6 +635,7 @@ function buildBudgetPresentationModel(context, month, draftAllocations) {
         suggestedAssigned,
         isSuggestedOnly: assigned === suggestedAssigned && getAssignedAmountForEntry(entry, draftAllocations) === 0 && suggestedAssigned > 0,
         monthlyNote,
+        isDirty,
         activity,
         available
       };
@@ -722,7 +766,7 @@ function renderBudgetMonthGrid(month, model, draftMeta, isSelected = false) {
                     </div>
                     <div class="amount budget-row-carryover">${formatCurrency(row.carryover)}</div>
                     <div class="budget-assigned-field">
-                      <div class="budget-amount-input-shell">
+                      <div class="budget-amount-input-shell ${row.isDirty ? 'is-dirty' : ''}">
                         <span class="budget-amount-prefix" aria-hidden="true">$</span>
                         <input
                           type="number"
@@ -850,6 +894,7 @@ function renderBudgetWorkspace() {
 
   renderBudgetSummaryCards(focusedMonthModel.model.summary, formatMonthLabel(focusedMonthModel.month));
   renderBudgetWorkspaceGrid(monthModels);
+  syncBudgetDirtyStatus();
 }
 
 function refreshBudgetComputedDisplay() {
@@ -900,6 +945,7 @@ function refreshBudgetComputedDisplay() {
         const activityElement = rowElement.querySelector('.budget-row-activity');
         const availableElement = rowElement.querySelector('.budget-row-available');
         const carryoverElement = rowElement.querySelector('.budget-row-carryover');
+        const amountShell = rowElement.querySelector('.budget-amount-input-shell');
 
         if (carryoverElement) {
           carryoverElement.textContent = formatCurrency(row.carryover);
@@ -916,9 +962,14 @@ function refreshBudgetComputedDisplay() {
           availableElement.classList.toggle('negative', row.available < 0);
           availableElement.classList.toggle('positive', row.available >= 0);
         }
+
+        if (amountShell) {
+          amountShell.classList.toggle('is-dirty', Boolean(row.isDirty));
+        }
       });
     });
   });
+  syncBudgetDirtyStatus();
 }
 
 function updateBudgetDraftEntry(month, entryKey, updates) {
@@ -969,6 +1020,7 @@ function resetBudgetDraftForVisibleMonths() {
     setMonthDraftState(month, nextDraftState);
   });
   renderBudgetWorkspace();
+  syncBudgetDirtyStatus();
 }
 
 function toggleBudgetNoteEditor(month, entryKey) {
@@ -1102,6 +1154,8 @@ async function saveBudgetMonths(months = budgetState.visibleMonths) {
   }
 
   await loadBudgetView({ month: budgetState.selectedMonth });
+  budgetDirtyToastActive = false;
+  clearStatus();
 }
 
 async function loadBudgetView(options = {}) {
@@ -1139,6 +1193,7 @@ async function loadBudgetView(options = {}) {
   budgetState.expandedNoteKey = null;
 
   renderBudgetWorkspace();
+  syncBudgetDirtyStatus();
 }
 
 function updateSectionHeader(sectionId) {
@@ -1175,7 +1230,23 @@ function updateDashboardStats(accounts, categories, subCategories) {
   }
 }
 
-function setStatus(message) {
+function clearStatus() {
+  const statusPill = document.getElementById('status-pill');
+
+  if (!statusPill) {
+    return;
+  }
+
+  if (statusToastTimeoutId) {
+    clearTimeout(statusToastTimeoutId);
+    statusToastTimeoutId = null;
+  }
+
+  statusPill.classList.remove('visible', 'persistent');
+  statusPill.textContent = '';
+}
+
+function setStatus(message, options = {}) {
   const statusPill = document.getElementById('status-pill');
 
   if (!statusPill) {
@@ -1188,9 +1259,15 @@ function setStatus(message) {
 
   statusPill.textContent = message;
   statusPill.classList.add('visible');
+  statusPill.classList.toggle('persistent', Boolean(options.persist));
+
+  if (options.persist) {
+    statusToastTimeoutId = null;
+    return;
+  }
 
   statusToastTimeoutId = window.setTimeout(() => {
-    statusPill.classList.remove('visible');
+    statusPill.classList.remove('visible', 'persistent');
     statusToastTimeoutId = null;
   }, 3000);
 }
