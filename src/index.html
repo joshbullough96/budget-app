@@ -40,7 +40,7 @@
         <p class="sidebar-card-label">Workflow</p>
         <h2>Give every dollar a job.</h2>
         <p>Start with accounts, organize categories, and then assign your money with intention.</p>
-        <button class="sync-button" type="button" onclick="syncData()">Sync Data</button>
+        <!-- <button class="sync-button" type="button" onclick="syncData()">Sync Data</button> -->
       </div>
     </aside>
 
@@ -238,22 +238,6 @@
         </div>
 
         <div id="budget" class="section">
-          <section class="panel budget-toolbar-panel">
-            <div class="budget-toolbar">
-              <div class="budget-month-nav" aria-label="Budget month navigation">
-                <button type="button" id="budget-month-prev" class="secondary-button compact-button">Previous</button>
-              <div class="budget-month-labels">
-                <div class="centered">
-                  <p class="eyebrow">Selected Month</p>
-                  <h3 id="budget-month-label">Month</h3>
-                </div>
-              </div>
-                <button type="button" id="budget-month-next" class="secondary-button compact-button">Next</button>
-                <button type="button" id="budget-month-current" class="secondary-button compact-button">Current Month</button>
-              </div>
-            </div>
-            <p id="budget-draft-hint" class="panel-hint">Three-month budget drafts stay editable until you save the visible months.</p>
-          </section>
           <section id="budget-summary-cards" class="budget-summary-grid"></section>
           <div class="section-grid budget-layout">
             <section class="panel list-panel single-panel">
@@ -261,13 +245,27 @@
                 <div class="budget-workspace-heading-copy">
                   <h3>Plan every dollar</h3>
                   <p class="panel-hint">Assign money at the row level, review carryover, and let transactions drive Activity automatically.</p>
+                  <p id="budget-draft-hint" class="panel-hint subtle budget-draft-hint">Three-month budget drafts stay editable until you save the visible months.</p>
                 </div>
-                <div class="budget-helper-actions budget-workspace-actions">
-                  <button type="button" id="budget-copy-previous" class="secondary-button compact-button">Copy Previous Month</button>
-                  <button type="button" id="budget-apply-recurring" class="secondary-button compact-button">Apply Recurring</button>
-                  <button type="button" id="budget-auto-apply" class="secondary-button compact-button">Auto-Apply Prefills</button>
-                  <button type="button" id="budget-reset-draft" class="secondary-button compact-button">Reset Draft</button>
-                  <button type="button" id="budget-save-month" class="primary-button compact-button">Save Visible Months</button>
+                <div class="budget-heading-controls">
+                  <div class="budget-month-nav" aria-label="Budget month navigation">
+                    <button type="button" id="budget-month-prev" class="secondary-button compact-button">Previous</button>
+                    <div class="budget-month-labels">
+                      <div class="centered">
+                        <p class="eyebrow">Selected Month</p>
+                        <h3 id="budget-month-label">Month</h3>
+                      </div>
+                    </div>
+                    <button type="button" id="budget-month-next" class="secondary-button compact-button">Next</button>
+                    <button type="button" id="budget-month-current" class="secondary-button compact-button">Current Month</button>
+                  </div>
+                  <div class="budget-helper-actions budget-workspace-actions">
+                    <button type="button" id="budget-copy-previous" class="secondary-button compact-button">Copy Previous Month</button>
+                    <button type="button" id="budget-apply-recurring" class="secondary-button compact-button">Apply Recurring</button>
+                    <button type="button" id="budget-auto-apply" class="secondary-button compact-button">Auto-Apply Prefills</button>
+                    <button type="button" id="budget-reset-draft" class="secondary-button compact-button">Reset Draft</button>
+                    <button type="button" id="budget-save-month" class="primary-button compact-button">Save Visible Months</button>
+                  </div>
                 </div>
               </div>
               <div id="budget-view" class="budget-workspace"></div>

@@ -15,6 +15,7 @@ let statusToastTimeoutId = null;
 let accountsSortable = null;
 let categoriesSortable = null;
 let subCategorySortables = [];
+let expandedCategoryIds = new Set();
 let editingTransactionId = null;
 let transactionSubCategoriesCache = [];
 let budgetDirtyToastActive = false;
@@ -91,7 +92,7 @@ async function loadSectionData(sectionId) {
   }
 }
 
-async function loadAccounts() {
+async function loadAccountsLegacy() {
   const accounts = sortItemsForDisplay(await cache.getAll('accounts'));
   const list = document.getElementById('accounts-list');
   if (!accounts.length) {
@@ -150,12 +151,78 @@ async function loadAccounts() {
   updateDashboardStats(accounts, null);
 }
 
+async function loadAccounts() {
+  const accounts = sortItemsForDisplay(await cache.getAll('accounts'));
+  const list = document.getElementById('accounts-list');
+  if (!accounts.length) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <h4>No accounts yet</h4>
+        <p>Add your checking, savings, cash, or credit card accounts to see your cash position here.</p>
+      </div>
+    `;
+    updateDashboardStats(accounts, null);
+    return;
+  }
+
+  list.innerHTML = accounts.map(acc => {
+    const currentBalance = formatCurrency(acc.currentBalance);
+    const startingBalance = formatCurrency(acc.startingBalance);
+    const isActive = acc.active !== false;
+    const budgetStatus = acc.offBudget ? 'Off Budget' : 'On Budget';
+    const accountStatus = isActive ? `Active &bull; ${budgetStatus}` : `Inactive &bull; ${budgetStatus}`;
+    const amountClass = acc.currentBalance >= 0 ? 'positive' : 'negative';
+    const descriptionMarkup = acc.description
+      ? `<p class="data-card-note">${escapeHtml(acc.description)}</p>`
+      : '';
+
+    return `
+      <article class="data-card account-card sortable-card" data-item-id="${acc.id}">
+        <div class="account-card-main">
+          <div class="data-card-copy account-card-copy">
+            <div class="data-card-title-group">
+              <div class="drag-handle" aria-hidden="true" title="Drag to reorder">
+                ${getActionIcon('drag')}
+              </div>
+              <div>
+                <h4>${escapeHtml(acc.name)}</h4>
+                ${descriptionMarkup}
+              </div>
+            </div>
+            <p class="account-card-starting">Started with ${startingBalance}</p>
+          </div>
+          <div class="account-card-side">
+            <div class="account-card-meta-row">
+              <div class="pill ${acc.offBudget || !isActive ? 'warn' : ''}">${accountStatus}</div>
+              <div class="icon-actions account-card-actions">
+                <button type="button" class="icon-button" onclick="editAccount('${acc.id}')" aria-label="Edit account" title="Edit account">
+                  ${getActionIcon('edit')}
+                </button>
+                <button type="button" class="icon-button danger" onclick="confirmDeleteAccount('${acc.id}')" aria-label="Delete account" title="Delete account">
+                  ${getActionIcon('trash')}
+                </button>
+              </div>
+            </div>
+            <div class="amount ${amountClass}">${currentBalance}</div>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  initializeAccountsSortable();
+  updateDashboardStats(accounts, null);
+}
+
 async function loadCategories() {
   const [rawCategories, subCategories] = await Promise.all([
     cache.getAll('categories'),
     cache.getAll('subCategories')
   ]);
   const categories = sortItemsForDisplay(rawCategories);
+  expandedCategoryIds = new Set(
+    Array.from(expandedCategoryIds).filter(categoryId => categories.some(category => category.id === categoryId))
+  );
   const list = document.getElementById('categories-list');
   if (!categories.length) {
     list.innerHTML = `
@@ -175,6 +242,7 @@ async function loadCategories() {
       const categoryStatus = cat.offBudget ? 'Off Budget' : 'On Budget';
       const categoryTarget = getBudgetTarget(cat);
       const categoryRecurring = getBudgetRecurring(cat);
+      const isExpanded = expandedCategoryIds.has(cat.id);
       const categoryMeta = [
         categoryTarget.type ? `${TARGET_TYPE_LABELS[categoryTarget.type].toLowerCase()} target` : '',
         categoryTarget.amount ? formatCurrency(categoryTarget.amount) : '',
@@ -188,7 +256,8 @@ async function loadCategories() {
       const categoryBudgetMarkup = categoryMeta
         ? `<p class="data-card-note">${escapeHtml(categoryMeta)}</p>`
         : '';
-      const subCategoryMarkup = categorySubCategories.length
+      const toggleLabel = isExpanded ? 'Collapse category details' : 'Expand category details';
+      const expandedContentMarkup = categorySubCategories.length
       ? `<div class="sub-list" data-category-id="${cat.id}">${categorySubCategories.map(subCategory => `
           <div class="sub-item sortable-sub-item" data-item-id="${subCategory.id}">
             <div class="data-card-title-group">
@@ -226,12 +295,22 @@ async function loadCategories() {
           </div>
         </div>
       `;
+      const categoryDetailMarkup = isExpanded
+        ? `
+          <div class="category-card-body">
+            ${expandedContentMarkup}
+          </div>
+        `
+        : '';
 
     return `
       <article class="data-card category-card sortable-card" data-item-id="${cat.id}">
         <div class="data-card-header">
           <div class="data-card-copy">
             <div class="data-card-title-group">
+              <button type="button" class="collapse-toggle ${isExpanded ? 'expanded' : ''}" onclick="toggleCategoryExpansion('${cat.id}')" aria-label="${toggleLabel}" aria-expanded="${isExpanded}" title="${toggleLabel}">
+                ${getActionIcon('chevron')}
+              </button>
               <div class="drag-handle" aria-hidden="true" title="Drag to reorder">
                 ${getActionIcon('drag')}
               </div>
@@ -259,7 +338,7 @@ async function loadCategories() {
             <p>${subCategoryCount}</p>
             <p>${budgetableSubCategoryCount} on-budget</p>
           </div>
-        ${subCategoryMarkup}
+        ${categoryDetailMarkup}
       </article>
     `;
   }).join('');
@@ -267,6 +346,16 @@ async function loadCategories() {
   initializeCategoriesSortable();
   initializeSubCategorySortables();
   updateDashboardStats(null, categories, subCategories);
+}
+
+async function toggleCategoryExpansion(categoryId) {
+  if (expandedCategoryIds.has(categoryId)) {
+    expandedCategoryIds.delete(categoryId);
+  } else {
+    expandedCategoryIds.add(categoryId);
+  }
+
+  await loadCategories();
 }
 
 function syncData() {
@@ -1376,6 +1465,14 @@ function getActionIcon(type) {
     return `
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M9 5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm0 5.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM9 16a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM15 5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm0 5.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM15 16a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z"></path>
+      </svg>
+    `;
+  }
+
+  if (type === 'chevron') {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41Z"></path>
       </svg>
     `;
   }
@@ -2660,6 +2757,7 @@ async function startAddSubCategory(categoryId) {
     return;
   }
 
+  expandedCategoryIds.add(category.id);
   document.getElementById('cat-id').value = category.id;
   document.getElementById('subcat-id').value = '';
   document.getElementById('cat-name').value = category.name || '';
@@ -2799,6 +2897,7 @@ window.onload = () => {
   window.editAccount = editAccount;
   window.confirmDeleteAccount = confirmDeleteAccount;
   window.editCategory = editCategory;
+  window.toggleCategoryExpansion = toggleCategoryExpansion;
   window.startAddSubCategory = startAddSubCategory;
   window.editSubCategory = editSubCategory;
   window.confirmDeleteCategory = confirmDeleteCategory;
