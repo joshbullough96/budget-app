@@ -92,7 +92,9 @@ async function loadAccounts() {
   list.innerHTML = accounts.map(acc => {
     const currentBalance = formatCurrency(acc.currentBalance);
     const startingBalance = formatCurrency(acc.startingBalance);
+    const isActive = acc.active !== false;
     const budgetStatus = acc.offBudget ? 'Off Budget' : 'On Budget';
+    const accountStatus = isActive ? `Active • ${budgetStatus}` : `Inactive • ${budgetStatus}`;
     const amountClass = acc.currentBalance >= 0 ? 'positive' : 'negative';
     const descriptionMarkup = acc.description
       ? `<p class="data-card-note">${escapeHtml(acc.description)}</p>`
@@ -110,7 +112,7 @@ async function loadAccounts() {
             ${descriptionMarkup}
             </div>
           </div>
-          <div class="pill ${acc.offBudget ? 'warn' : ''}">${budgetStatus}</div>
+          <div class="pill ${acc.offBudget || !isActive ? 'warn' : ''}">${accountStatus}</div>
         </div>
         <div class="data-card-footer">
           <p>Started with ${startingBalance}</p>
@@ -1168,7 +1170,7 @@ async function loadBudgetView(options = {}) {
     cache.getAll('budgetAllocations')
   ]);
   const availableCash = accounts
-    .filter(account => !account.offBudget)
+    .filter(account => account.active !== false && !account.offBudget)
     .reduce((sum, account) => sum + Number(account.currentBalance || 0), 0);
   const entries = buildBudgetEntryDefinitions(categories, subCategories, transactions, budgetAllocations);
   const visibleMonths = getVisibleBudgetMonths(targetMonth);
@@ -1214,10 +1216,11 @@ async function refreshDashboard() {
 
 function updateDashboardStats(accounts, categories, subCategories) {
   if (accounts) {
-    const totalCash = accounts.reduce((sum, acc) => sum + Number(acc.currentBalance || 0), 0);
+    const activeAccounts = accounts.filter(acc => acc.active !== false);
+    const totalCash = activeAccounts.reduce((sum, acc) => sum + Number(acc.currentBalance || 0), 0);
 
     document.getElementById('total-cash').textContent = formatCurrency(totalCash);
-    document.getElementById('account-count').textContent = accounts.length.toString();
+    document.getElementById('account-count').textContent = activeAccounts.length.toString();
   }
 
   if (categories) {
@@ -1340,6 +1343,7 @@ function resetAccountForm() {
   editingAccountId = null;
   document.getElementById('account-form').reset();
   document.getElementById('acc-id').value = '';
+  document.getElementById('acc-active').checked = true;
   setAccountFormMode(false);
 }
 
@@ -2359,6 +2363,7 @@ async function editAccount(accountId) {
   document.getElementById('acc-start').value = Number(account.startingBalance || 0);
   document.getElementById('acc-current').value = Number(account.currentBalance || 0);
   document.getElementById('acc-off').checked = Boolean(account.offBudget);
+  document.getElementById('acc-active').checked = account.active !== false;
   setAccountFormMode(true);
   setStatus(`Editing account: ${account.name}`);
   document.getElementById('acc-name').focus();
@@ -2605,6 +2610,7 @@ window.onload = () => {
     const start = parseFloat(document.getElementById('acc-start').value);
     const current = parseFloat(document.getElementById('acc-current').value);
     const off = document.getElementById('acc-off').checked;
+    const active = document.getElementById('acc-active').checked;
 
     if (id) {
       await cache.update('accounts', { id }, { $set: {
@@ -2612,7 +2618,8 @@ window.onload = () => {
         description: desc,
         startingBalance: start,
         currentBalance: current,
-        offBudget: off
+        offBudget: off,
+        active
       } });
       await loadAccounts();
       await refreshDashboard();
@@ -2623,7 +2630,7 @@ window.onload = () => {
     }
 
     const sortOrder = await getNextSortOrder('accounts');
-    const account = new Account(name, desc, start, current, off, sortOrder);
+    const account = new Account(name, desc, start, current, off, sortOrder, active);
     await cache.insert('accounts', account);
     await loadAccounts();
     await refreshDashboard();
