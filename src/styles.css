@@ -385,11 +385,12 @@ h3 {
 }
 
 .import-bar {
-  width: 25rem;
+  width: 100%;
+  max-width: 25rem;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-top: 0.9rem;
+  margin-top: 0;
 }
 
 .transactions-toolbar {
@@ -401,6 +402,7 @@ h3 {
 
 .transactions-import-panel {
   display: grid;
+  width: min(100%, 25rem);
   justify-items: end;
   gap: 0.45rem;
 }
@@ -417,7 +419,7 @@ h3 {
 }
 
 .transactions-import-hint {
-  max-width: 25rem;
+  width: 100%;
   margin: 0;
   text-align: left;
 }
