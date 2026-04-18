@@ -387,7 +387,7 @@ h3 {
 
 .import-bar {
   width: 100%;
-  max-width: 21rem;
+  max-width: 26rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -403,7 +403,7 @@ h3 {
 
 .transactions-import-panel {
   display: grid;
-  width: min(100%, 21rem);
+  width: min(100%, 26rem);
   justify-items: end;
   gap: 0.35rem;
 }
@@ -439,6 +439,7 @@ h3 {
 
 .import-bar input[type="file"] {
   flex: 1;
+  min-width: 15rem;
   padding: 0.48rem 0.6rem;
   border-radius: 13px;
   background: rgba(255, 255, 255, 0.66);
