@@ -38,6 +38,10 @@
           <span class="nav-label">Budget</span>
           <span class="nav-hint">Monthly Allocation</span>
         </button>
+        <button class="nav-button" data-section="reports" onclick="showSection('reports')">
+          <span class="nav-label">Reports</span>
+          <span class="nav-hint">See trends</span>
+        </button>
       </nav>
 
       <div class="sidebar-card">
@@ -225,16 +229,19 @@
               </div>
               <div class="transactions-toolbar">
                 <div class="transactions-import-panel">
-                  <div class="import-bar">
-                    <input type="file" id="transaction-csv-file" accept=".csv,text/csv">
-                    <button type="button" id="transaction-import-button" class="secondary-button">Import CSV</button>
+                    <div class="transactions-import-panel-details">
+                      <div class="import-bar">
+                      <input type="file" id="transaction-csv-file" accept=".csv,text/csv">
+                      <button type="button" id="transaction-import-button" class="secondary-button">Import CSV</button>
+                    </div>
+                    <p class="panel-hint subtle transactions-import-hint">Required CSV columns: date, account, payee, category, amount. Optional: subcategory, memo.</p>
                   </div>
-                  <p class="panel-hint subtle transactions-import-hint">Required CSV columns: date, account, payee, category, amount. Optional: subcategory, memo.</p>
+                  <div class="table-toolbar-actions">
+                    <button type="button" id="transaction-export-button" class="secondary-button compact-button">Export CSV</button>
+                    <button type="button" id="transaction-filters-toggle" class="secondary-button compact-button">Filters</button>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div class="transaction-grid-toolbar">
-              <button type="button" id="transaction-filters-toggle" class="secondary-button compact-button">Filters</button>
             </div>
             <div id="transactions-list" class="transaction-table-shell"></div>
           </section>
@@ -242,10 +249,18 @@
 
         <div id="transfers" class="section">
           <section class="panel single-panel">
-            <div class="panel-heading">
-              <p class="eyebrow">Transfers</p>
-              <h3>Move money between accounts</h3>
-              <p class="panel-hint">Schedule or complete transfers, then keep both sides of the ledger in sync.</p>
+            <div class="panel-heading transfers-heading">
+              <div class="transactions-heading-copy">
+                <p class="eyebrow">Transfers</p>
+                <h3>Move money between accounts</h3>
+                <p class="panel-hint">Schedule or complete transfers, then keep both sides of the ledger in sync.</p>
+              </div>
+            </div>
+            <div class="transfer-grid-toolbar">
+              <div class="table-toolbar-actions">
+                <button type="button" id="transfer-export-button" class="secondary-button compact-button">Export CSV</button>
+                <button type="button" id="transfer-filters-toggle" class="secondary-button compact-button">Filters</button>
+              </div>
             </div>
             <div id="transfers-list" class="transfer-table-shell"></div>
           </section>
@@ -274,6 +289,7 @@
                     <button type="button" id="budget-copy-previous" class="secondary-button compact-button">Copy Previous Month</button>
                     <button type="button" id="budget-apply-recurring" class="secondary-button compact-button">Apply Recurring</button>
                     <button type="button" id="budget-auto-apply" class="secondary-button compact-button">Auto-Apply Prefills</button>
+                    <button type="button" id="budget-export-visible" class="secondary-button compact-button">Export Visible Months</button>
                     <button type="button" id="budget-reset-draft" class="secondary-button compact-button">Reset Draft</button>
                     <button type="button" id="budget-save-month" class="primary-button compact-button">Save Visible Months</button>
                   </div>
@@ -282,6 +298,26 @@
               <div id="budget-view" class="budget-workspace"></div>
             </section>
           </div>
+        </div>
+
+        <div id="reports" class="section">
+          <section class="panel single-panel">
+            <div class="panel-heading reports-heading">
+              <div class="reports-heading-copy">
+                <p class="eyebrow">Reports</p>
+                <h3>See the story in your budget</h3>
+                <p class="panel-hint">Track cashflow, compare budgeted dollars to actual spending, and see where the current month is going.</p>
+              </div>
+              <div class="reports-controls">
+                <label class="reports-control">
+                  <span>Report Year</span>
+                  <select id="reports-year-select"></select>
+                </label>
+                <p id="reports-month-context" class="panel-hint subtle reports-month-context">Using the current selected month.</p>
+              </div>
+            </div>
+            <div id="reports-view" class="reports-grid"></div>
+          </section>
         </div>
     </main>
   </div>

@@ -21,22 +21,38 @@ let editingTransactionId = null;
 let editingTransferId = null;
 let transactionSubCategoriesCache = [];
 let budgetDirtyToastActive = false;
+const DEFAULT_TRANSACTION_FILTERS = {
+  date: '',
+  account: '',
+  payee: '',
+  category: '',
+  subCategory: '',
+  memo: '',
+  amount: '',
+  balance: ''
+};
+const DEFAULT_TRANSFER_FILTERS = {
+  date: '',
+  fromAccount: '',
+  toAccount: '',
+  amount: '',
+  status: '',
+  memo: ''
+};
 let transactionTableState = {
   sortKey: 'date',
   sortDirection: 'desc',
   filtersVisible: false,
-  filters: {
-    date: '',
-    account: '',
-    payee: '',
-    category: '',
-    subCategory: '',
-    memo: '',
-    amount: '',
-    balance: ''
-  }
+  filters: { ...DEFAULT_TRANSACTION_FILTERS }
+};
+let transferTableState = {
+  sortKey: 'date',
+  sortDirection: 'desc',
+  filtersVisible: false,
+  filters: { ...DEFAULT_TRANSFER_FILTERS }
 };
 let transactionFilterFocusState = null;
+let transferFilterFocusState = null;
 let budgetState = {
   selectedMonth: '',
   loadedMonth: '',
@@ -45,6 +61,9 @@ let budgetState = {
   draftAllocationsByMonth: new Map(),
   draftMetaByMonth: new Map(),
   expandedNoteKey: null
+};
+let reportsState = {
+  selectedYear: ''
 };
 const sectionCopy = {
   accounts: {
@@ -66,6 +85,10 @@ const sectionCopy = {
   budget: {
     title: 'Monthly Budget',
     subtitle: 'Assign every dollar with confidence before the month gets busy.'
+  },
+  reports: {
+    title: 'Reports',
+    subtitle: 'See cashflow, budget performance, and category mix over time.'
   }
 };
 
@@ -97,6 +120,9 @@ async function loadSectionData(sectionId) {
       break;
     case 'budget':
       await loadBudgetView();
+      break;
+    case 'reports':
+      await loadReports();
       break;
   }
 }
@@ -383,6 +409,12 @@ async function loadTransactions() {
   const transferMap = new Map(transfers.map(transfer => [transfer.id, transfer]));
   transactionSubCategoriesCache = subCategories;
   const visibleTransactions = getFilteredAndSortedTransactions(transactions, accountMap, categoryMap, subCategoryMap, transferMap);
+  const filterToggleButton = document.getElementById('transaction-filters-toggle');
+
+  if (filterToggleButton) {
+    filterToggleButton.textContent = getFilterButtonLabel('Filters', transactionTableState.filters);
+    filterToggleButton.classList.toggle('is-active', transactionTableState.filtersVisible);
+  }
 
   const emptyMarkup = !visibleTransactions.length
     ? `
@@ -396,14 +428,14 @@ async function loadTransactions() {
   list.innerHTML = `
       <div class="transaction-table">
         <div class="transaction-row transaction-head">
-          <div><button type="button" class="transaction-sort-button" data-sort-key="date">Date${getTransactionSortIndicator('date')}</button></div>
-          <div><button type="button" class="transaction-sort-button" data-sort-key="account">Account${getTransactionSortIndicator('account')}</button></div>
-          <div><button type="button" class="transaction-sort-button" data-sort-key="payee">Payee${getTransactionSortIndicator('payee')}</button></div>
-          <div><button type="button" class="transaction-sort-button" data-sort-key="category">Category${getTransactionSortIndicator('category')}</button></div>
-          <div><button type="button" class="transaction-sort-button" data-sort-key="subCategory">Subcategory${getTransactionSortIndicator('subCategory')}</button></div>
-          <div><button type="button" class="transaction-sort-button" data-sort-key="memo">Memo${getTransactionSortIndicator('memo')}</button></div>
-          <div><button type="button" class="transaction-sort-button" data-sort-key="amount">Amount${getTransactionSortIndicator('amount')}</button></div>
-          <div><button type="button" class="transaction-sort-button" data-sort-key="balance">Balance${getTransactionSortIndicator('balance')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="date">Date${getTableSortIndicator(transactionTableState, 'date')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="account">Account${getTableSortIndicator(transactionTableState, 'account')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="payee">Payee${getTableSortIndicator(transactionTableState, 'payee')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="category">Category${getTableSortIndicator(transactionTableState, 'category')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="subCategory">Subcategory${getTableSortIndicator(transactionTableState, 'subCategory')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="memo">Memo${getTableSortIndicator(transactionTableState, 'memo')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="amount">Amount${getTableSortIndicator(transactionTableState, 'amount')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="balance">Balance${getTableSortIndicator(transactionTableState, 'balance')}</button></div>
           <div>Actions</div>
         </div>
         ${transactionTableState.filtersVisible ? `
@@ -450,16 +482,6 @@ async function loadTransactions() {
   }
 }
 
-function compareTransfersForDisplay(left, right) {
-  const dateDifference = parseDateValue(right.transferDate) - parseDateValue(left.transferDate);
-
-  if (dateDifference !== 0) {
-    return dateDifference;
-  }
-
-  return String(right.id).localeCompare(String(left.id));
-}
-
 async function loadTransfers() {
   const [transfers, accounts] = await Promise.all([
     cache.getAll('transfers'),
@@ -468,12 +490,19 @@ async function loadTransfers() {
   const list = document.getElementById('transfers-list');
   const accountMap = new Map(accounts.map(account => [account.id, account]));
   const selectableAccounts = sortItemsForDisplay(accounts.filter(account => account.active !== false));
-  const orderedTransfers = transfers.slice().sort(compareTransfersForDisplay);
-  const emptyMarkup = !orderedTransfers.length
+  const visibleTransfers = getFilteredAndSortedTransfers(transfers, accountMap);
+  const filterToggleButton = document.getElementById('transfer-filters-toggle');
+
+  if (filterToggleButton) {
+    filterToggleButton.textContent = getFilterButtonLabel('Filters', transferTableState.filters);
+    filterToggleButton.classList.toggle('is-active', transferTableState.filtersVisible);
+  }
+
+  const emptyMarkup = !visibleTransfers.length
     ? `
         <div class="empty-state transaction-empty-state">
-          <h4>No transfers yet</h4>
-          <p>Create one from the first row to move money between accounts.</p>
+          <h4>No matching transfers</h4>
+          <p>Adjust the filters or create one from the first row to move money between accounts.</p>
         </div>
       `
     : '';
@@ -481,16 +510,33 @@ async function loadTransfers() {
   list.innerHTML = `
     <div class="transfer-table">
       <div class="transfer-row transfer-head">
-        <div>Date</div>
-        <div>From Account</div>
-        <div>To Account</div>
-        <div>Amount</div>
-        <div>Status</div>
-        <div>Memo</div>
+        <div><button type="button" class="transaction-sort-button" data-table-type="transfers" data-sort-key="date">Date${getTableSortIndicator(transferTableState, 'date')}</button></div>
+        <div><button type="button" class="transaction-sort-button" data-table-type="transfers" data-sort-key="fromAccount">From Account${getTableSortIndicator(transferTableState, 'fromAccount')}</button></div>
+        <div><button type="button" class="transaction-sort-button" data-table-type="transfers" data-sort-key="toAccount">To Account${getTableSortIndicator(transferTableState, 'toAccount')}</button></div>
+        <div><button type="button" class="transaction-sort-button" data-table-type="transfers" data-sort-key="amount">Amount${getTableSortIndicator(transferTableState, 'amount')}</button></div>
+        <div><button type="button" class="transaction-sort-button" data-table-type="transfers" data-sort-key="status">Status${getTableSortIndicator(transferTableState, 'status')}</button></div>
+        <div><button type="button" class="transaction-sort-button" data-table-type="transfers" data-sort-key="memo">Memo${getTableSortIndicator(transferTableState, 'memo')}</button></div>
         <div>Actions</div>
       </div>
+      ${transferTableState.filtersVisible ? `
+        <div class="transfer-row transaction-filter-row">
+          <div><input type="text" class="transfer-filter-input txn-filter-input" data-filter-key="date" value="${escapeHtml(transferTableState.filters.date)}" placeholder="Filter"></div>
+          <div><input type="text" class="transfer-filter-input txn-filter-input" data-filter-key="fromAccount" value="${escapeHtml(transferTableState.filters.fromAccount)}" placeholder="Filter"></div>
+          <div><input type="text" class="transfer-filter-input txn-filter-input" data-filter-key="toAccount" value="${escapeHtml(transferTableState.filters.toAccount)}" placeholder="Filter"></div>
+          <div><input type="text" class="transfer-filter-input txn-filter-input" data-filter-key="amount" value="${escapeHtml(transferTableState.filters.amount)}" placeholder="Filter"></div>
+          <div>
+            <select class="transfer-filter-input txn-filter-input" data-filter-key="status">
+              <option value="">All</option>
+              <option value="scheduled" ${transferTableState.filters.status === 'scheduled' ? 'selected' : ''}>Scheduled</option>
+              <option value="completed" ${transferTableState.filters.status === 'completed' ? 'selected' : ''}>Completed</option>
+            </select>
+          </div>
+          <div><input type="text" class="transfer-filter-input txn-filter-input" data-filter-key="memo" value="${escapeHtml(transferTableState.filters.memo)}" placeholder="Filter"></div>
+          <div><button type="button" class="secondary-button compact-button transfer-clear-filters">Clear</button></div>
+        </div>
+      ` : ''}
       ${renderTransferEditorRow({ rowMode: 'create', accounts: selectableAccounts })}
-      ${orderedTransfers.map(transfer => {
+      ${visibleTransfers.map(({ transfer }) => {
         if (editingTransferId === transfer.id) {
           return renderTransferEditorRow({
             rowMode: 'edit',
@@ -504,6 +550,18 @@ async function loadTransfers() {
     </div>
     ${emptyMarkup}
   `;
+
+  if (transferFilterFocusState?.key) {
+    const filterInput = list.querySelector(`.transfer-filter-input[data-filter-key="${transferFilterFocusState.key}"]`);
+
+    if (filterInput) {
+      filterInput.focus();
+
+      if (typeof transferFilterFocusState.selectionStart === 'number' && typeof transferFilterFocusState.selectionEnd === 'number' && typeof filterInput.setSelectionRange === 'function') {
+        filterInput.setSelectionRange(transferFilterFocusState.selectionStart, transferFilterFocusState.selectionEnd);
+      }
+    }
+  }
 }
 
 function shiftMonthValue(monthValue, offset) {
@@ -1825,6 +1883,15 @@ function formatCurrency(amount) {
   }).format(Number(amount || 0));
 }
 
+function formatCompactCurrency(amount) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    notation: 'compact',
+    maximumFractionDigits: 1
+  }).format(Number(amount || 0));
+}
+
 function padDatePart(value) {
   return String(value).padStart(2, '0');
 }
@@ -1867,14 +1934,32 @@ function formatDate(value) {
   });
 }
 
-function getTransactionSortIndicator(sortKey) {
-  if (transactionTableState.sortKey !== sortKey) {
+function formatMonthShortLabel(monthValue) {
+  const [year, month] = String(monthValue).split('-').map(Number);
+  const date = new Date(year, month - 1, 1);
+
+  return date.toLocaleDateString('en-US', {
+    month: 'short'
+  });
+}
+
+function getTableSortIndicator(tableState, sortKey) {
+  if (tableState.sortKey !== sortKey) {
     return '';
   }
 
-  return transactionTableState.sortDirection === 'asc'
+  return tableState.sortDirection === 'asc'
     ? ' <span class="transaction-sort-indicator" aria-hidden="true">&#8593;</span>'
     : ' <span class="transaction-sort-indicator" aria-hidden="true">&#8595;</span>';
+}
+
+function getActiveFilterCount(filters) {
+  return Object.values(filters).filter(value => String(value || '').trim()).length;
+}
+
+function getFilterButtonLabel(baseLabel, filters) {
+  const count = getActiveFilterCount(filters);
+  return count ? `${baseLabel} (${count})` : baseLabel;
 }
 
 function normalizeTransferStatus(status) {
@@ -2008,6 +2093,75 @@ function getFilteredAndSortedTransactions(transactions, accountMap, categoryMap,
     }
 
     return String(left.transaction.id).localeCompare(String(right.transaction.id));
+  });
+
+  return filteredModels;
+}
+
+function buildTransferViewModel(transfer, accountMap) {
+  const originAccount = accountMap.get(transfer.originAccountId);
+  const destinationAccount = accountMap.get(transfer.destinationAccountId);
+  const normalizedStatus = normalizeTransferStatus(transfer.status);
+
+  return {
+    transfer,
+    values: {
+      date: formatDate(transfer.transferDate),
+      fromAccount: originAccount ? originAccount.name : 'Unknown account',
+      toAccount: destinationAccount ? destinationAccount.name : 'Unknown account',
+      amount: formatCurrency(transfer.amount),
+      status: getTransferStatusLabel(normalizedStatus),
+      memo: transfer.memo || ''
+    },
+    filterValues: {
+      date: [transfer.transferDate, formatDate(transfer.transferDate)],
+      fromAccount: [originAccount ? originAccount.name : 'Unknown account'],
+      toAccount: [destinationAccount ? destinationAccount.name : 'Unknown account'],
+      amount: [Number(transfer.amount || 0), formatCurrency(transfer.amount)],
+      status: [normalizedStatus, getTransferStatusLabel(normalizedStatus)],
+      memo: [transfer.memo || '']
+    },
+    raw: {
+      date: parseDateValue(transfer.transferDate).getTime(),
+      fromAccount: originAccount ? originAccount.name : '',
+      toAccount: destinationAccount ? destinationAccount.name : '',
+      amount: Number(transfer.amount || 0),
+      status: normalizedStatus,
+      memo: transfer.memo || ''
+    }
+  };
+}
+
+function getFilteredAndSortedTransfers(transfers, accountMap) {
+  const models = transfers.map(transfer => buildTransferViewModel(transfer, accountMap));
+  const filteredModels = models.filter(model => Object.entries(transferTableState.filters).every(([key, filterValue]) => {
+    if (!filterValue) {
+      return true;
+    }
+
+    return matchesTransactionFilter(model.filterValues[key], filterValue);
+  }));
+
+  const direction = transferTableState.sortDirection === 'asc' ? 1 : -1;
+  const sortKey = transferTableState.sortKey;
+
+  filteredModels.sort((left, right) => {
+    const leftValue = left.raw[sortKey];
+    const rightValue = right.raw[sortKey];
+
+    if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+      if (leftValue !== rightValue) {
+        return (leftValue - rightValue) * direction;
+      }
+    } else {
+      const comparison = String(leftValue || '').localeCompare(String(rightValue || ''), undefined, { sensitivity: 'base' });
+
+      if (comparison !== 0) {
+        return comparison * direction;
+      }
+    }
+
+    return String(left.transfer.id).localeCompare(String(right.transfer.id));
   });
 
   return filteredModels;
@@ -2979,6 +3133,433 @@ async function importTransactionsFromCsv() {
   }
 }
 
+function buildCsvFileName(prefix) {
+  const today = buildLocalDateValue(new Date());
+  return `${prefix}-${today}.csv`;
+}
+
+function escapeCsvValue(value) {
+  const normalized = value === null || typeof value === 'undefined'
+    ? ''
+    : String(value);
+
+  if (/["\r\n,]/.test(normalized)) {
+    return `"${normalized.replace(/"/g, '""')}"`;
+  }
+
+  return normalized;
+}
+
+function downloadCsvFile(filename, headers, rows) {
+  const csvLines = [
+    headers.map(escapeCsvValue).join(','),
+    ...rows.map(row => row.map(escapeCsvValue).join(','))
+  ];
+  const blob = new Blob([`\uFEFF${csvLines.join('\r\n')}`], { type: 'text/csv;charset=utf-8;' });
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = downloadUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+}
+
+async function exportTransactionsCsv() {
+  const [transactions, transfers, accounts, categories, subCategories] = await Promise.all([
+    cache.getAll('transactions'),
+    cache.getAll('transfers'),
+    cache.getAll('accounts'),
+    cache.getAll('categories'),
+    cache.getAll('subCategories')
+  ]);
+  const accountMap = new Map(accounts.map(account => [account.id, account]));
+  const categoryMap = new Map(categories.map(category => [category.id, category]));
+  const subCategoryMap = new Map(subCategories.map(subCategory => [subCategory.id, subCategory]));
+  const transferMap = new Map(transfers.map(transfer => [transfer.id, transfer]));
+  const visibleTransactions = getFilteredAndSortedTransactions(transactions, accountMap, categoryMap, subCategoryMap, transferMap);
+
+  downloadCsvFile(
+    buildCsvFileName('transactions'),
+    ['Date', 'Account', 'Payee', 'Category', 'Subcategory', 'Memo', 'Amount', 'Balance', 'Status'],
+    visibleTransactions.map(({ transaction, values }) => [
+      transaction.date,
+      values.account,
+      values.payee,
+      values.category,
+      values.subCategory,
+      values.memo,
+      Number(transaction.amount || 0).toFixed(2),
+      transaction.pending ? 'Pending' : values.balance,
+      transaction.pending ? 'Pending' : 'Posted'
+    ])
+  );
+
+  setStatus(`Exported ${visibleTransactions.length} transaction row${visibleTransactions.length === 1 ? '' : 's'}.`);
+}
+
+async function exportTransfersCsv() {
+  const [transfers, accounts] = await Promise.all([
+    cache.getAll('transfers'),
+    cache.getAll('accounts')
+  ]);
+  const accountMap = new Map(accounts.map(account => [account.id, account]));
+  const visibleTransfers = getFilteredAndSortedTransfers(transfers, accountMap);
+
+  downloadCsvFile(
+    buildCsvFileName('transfers'),
+    ['Date', 'From Account', 'To Account', 'Amount', 'Status', 'Memo'],
+    visibleTransfers.map(({ transfer, values }) => [
+      transfer.transferDate,
+      values.fromAccount,
+      values.toAccount,
+      Number(transfer.amount || 0).toFixed(2),
+      values.status,
+      values.memo
+    ])
+  );
+
+  setStatus(`Exported ${visibleTransfers.length} transfer row${visibleTransfers.length === 1 ? '' : 's'}.`);
+}
+
+function buildVisibleBudgetExportRows() {
+  if (!budgetState.context) {
+    return [];
+  }
+
+  return budgetState.visibleMonths.flatMap(month => {
+    const draftState = getMonthDraftState(month);
+    const model = buildBudgetPresentationModel(
+      budgetState.context,
+      month,
+      draftState.draftAllocations
+    );
+
+    return model.groups.flatMap(group => group.rows.map(row => [
+      month,
+      formatMonthLabel(month),
+      group.name,
+      row.subCategoryName || '',
+      row.isCategoryFallback ? 'Category' : 'Subcategory',
+      row.target.type ? (TARGET_TYPE_LABELS[row.target.type] || row.target.type) : 'Flexible',
+      Number(row.target.amount || 0).toFixed(2),
+      row.recurring.enabled ? (RECURRING_CADENCE_LABELS[row.recurring.cadence] || row.recurring.cadence) : '',
+      row.recurring.enabled ? Number(row.recurring.amount || 0).toFixed(2) : '',
+      Number(row.carryover || 0).toFixed(2),
+      Number(row.assigned || 0).toFixed(2),
+      Number(row.activity || 0).toFixed(2),
+      Number(row.available || 0).toFixed(2),
+      row.monthlyNote || ''
+    ]));
+  });
+}
+
+function exportVisibleBudgetMonthsCsv() {
+  const rows = buildVisibleBudgetExportRows();
+
+  if (!rows.length) {
+    setStatus('There are no visible budget rows to export yet.');
+    return;
+  }
+
+  downloadCsvFile(
+    buildCsvFileName('budget-visible-months'),
+    ['Month', 'Month Label', 'Category', 'Line', 'Line Type', 'Target', 'Target Amount', 'Recurring Cadence', 'Recurring Amount', 'Carryover', 'Assigned', 'Activity', 'Available', 'Monthly Note'],
+    rows
+  );
+
+  setStatus(`Exported ${rows.length} visible budget row${rows.length === 1 ? '' : 's'}.`);
+}
+
+function getReportYears(transactions, budgetAllocations) {
+  const years = new Set([
+    Number((budgetState.selectedMonth || getCurrentMonthValue()).slice(0, 4)),
+    new Date().getFullYear()
+  ]);
+
+  transactions.forEach(transaction => {
+    const year = Number(String(transaction.date || '').slice(0, 4));
+
+    if (Number.isFinite(year)) {
+      years.add(year);
+    }
+  });
+
+  budgetAllocations.forEach(allocation => {
+    const year = Number(String(allocation.month || '').slice(0, 4));
+
+    if (Number.isFinite(year)) {
+      years.add(year);
+    }
+  });
+
+  return Array.from(years).sort((left, right) => right - left);
+}
+
+function isOnBudgetCategoryReference(categoryId, subCategoryId, categoryMap, subCategoryMap) {
+  const category = categoryMap.get(categoryId);
+
+  if (!category || category.offBudget) {
+    return false;
+  }
+
+  if (!subCategoryId) {
+    return true;
+  }
+
+  const subCategory = subCategoryMap.get(subCategoryId);
+  return !subCategory || !subCategory.offBudget;
+}
+
+function buildMonthlyReportSeries(year, transactions, budgetAllocations, categoryMap, subCategoryMap) {
+  const months = Array.from({ length: 12 }, (_, index) => `${year}-${padDatePart(index + 1)}`);
+
+  return months.map(month => {
+    const postedTransactions = transactions.filter(transaction => (
+      !transaction.pending
+      && !transaction.transferId
+      && String(transaction.date || '').slice(0, 7) === month
+    ));
+    const inflow = postedTransactions
+      .filter(transaction => Number(transaction.amount || 0) > 0)
+      .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+    const outflow = postedTransactions
+      .filter(transaction => Number(transaction.amount || 0) < 0)
+      .reduce((sum, transaction) => sum + Math.abs(Number(transaction.amount || 0)), 0);
+    const budgeted = budgetAllocations
+      .filter(allocation => (
+        allocation.month === month
+        && isOnBudgetCategoryReference(allocation.categoryId, allocation.subCategoryId, categoryMap, subCategoryMap)
+      ))
+      .reduce((sum, allocation) => sum + Number(allocation.assigned || 0), 0);
+    const actual = postedTransactions
+      .filter(transaction => (
+        Number(transaction.amount || 0) < 0
+        && transaction.categoryId
+        && isOnBudgetCategoryReference(transaction.categoryId, transaction.subCategoryId, categoryMap, subCategoryMap)
+      ))
+      .reduce((sum, transaction) => sum + Math.abs(Number(transaction.amount || 0)), 0);
+
+    return {
+      month,
+      label: formatMonthShortLabel(month),
+      inflow,
+      outflow,
+      budgeted,
+      actual
+    };
+  });
+}
+
+function buildCategorySpendSlices(selectedMonth, transactions, categoryMap, subCategoryMap) {
+  const categoryTotals = new Map();
+
+  transactions.forEach(transaction => {
+    if (
+      transaction.pending
+      || transaction.transferId
+      || Number(transaction.amount || 0) >= 0
+      || String(transaction.date || '').slice(0, 7) !== selectedMonth
+      || !transaction.categoryId
+      || !isOnBudgetCategoryReference(transaction.categoryId, transaction.subCategoryId, categoryMap, subCategoryMap)
+    ) {
+      return;
+    }
+
+    const category = categoryMap.get(transaction.categoryId);
+    const label = category ? category.name : 'Uncategorized';
+    categoryTotals.set(label, (categoryTotals.get(label) || 0) + Math.abs(Number(transaction.amount || 0)));
+  });
+
+  return Array.from(categoryTotals.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((left, right) => right.value - left.value);
+}
+
+function buildLineChartPath(values, maxValue, chartWidth, chartHeight) {
+  if (!values.length || maxValue <= 0) {
+    return '';
+  }
+
+  const xStep = values.length > 1 ? chartWidth / (values.length - 1) : chartWidth / 2;
+
+  return values.map((value, index) => {
+    const x = values.length > 1 ? index * xStep : chartWidth / 2;
+    const y = chartHeight - ((value / maxValue) * chartHeight);
+    return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+  }).join(' ');
+}
+
+function renderInflowOutflowChart(monthlySeries) {
+  const chartWidth = 640;
+  const chartHeight = 220;
+  const maxValue = Math.max(1, ...monthlySeries.flatMap(item => [item.inflow, item.outflow]));
+  const inflowPath = buildLineChartPath(monthlySeries.map(item => item.inflow), maxValue, chartWidth, chartHeight);
+  const outflowPath = buildLineChartPath(monthlySeries.map(item => item.outflow), maxValue, chartWidth, chartHeight);
+  const xStep = monthlySeries.length > 1 ? chartWidth / (monthlySeries.length - 1) : chartWidth / 2;
+
+  return `
+    <article class="report-card report-card-wide">
+      <div class="report-card-copy">
+        <p class="eyebrow">Cashflow</p>
+        <h4>Inflow vs Outflow</h4>
+        <p class="panel-hint">Monthly posted cash moving in and out, excluding transfers and pending rows.</p>
+      </div>
+      <div class="report-line-chart">
+        <svg viewBox="0 0 ${chartWidth} ${chartHeight + 26}" role="img" aria-label="Inflow versus outflow line chart">
+          ${Array.from({ length: 4 }, (_, index) => {
+            const y = (chartHeight / 3) * index;
+            return `<line x1="0" y1="${y.toFixed(2)}" x2="${chartWidth}" y2="${y.toFixed(2)}" class="report-grid-line" />`;
+          }).join('')}
+          ${inflowPath ? `<path d="${inflowPath}" class="report-line-path inflow" />` : ''}
+          ${outflowPath ? `<path d="${outflowPath}" class="report-line-path outflow" />` : ''}
+          ${monthlySeries.map((item, index) => {
+            const x = monthlySeries.length > 1 ? index * xStep : chartWidth / 2;
+            const inflowY = chartHeight - ((item.inflow / maxValue) * chartHeight);
+            const outflowY = chartHeight - ((item.outflow / maxValue) * chartHeight);
+
+            return `
+              <circle cx="${x.toFixed(2)}" cy="${inflowY.toFixed(2)}" r="3.5" class="report-line-dot inflow" />
+              <circle cx="${x.toFixed(2)}" cy="${outflowY.toFixed(2)}" r="3.5" class="report-line-dot outflow" />
+              <text x="${x.toFixed(2)}" y="${(chartHeight + 18).toFixed(2)}" text-anchor="middle" class="report-axis-label">${escapeHtml(item.label)}</text>
+            `;
+          }).join('')}
+        </svg>
+      </div>
+      <div class="report-legend">
+        <span><i class="report-legend-swatch inflow"></i>Inflows ${formatCompactCurrency(monthlySeries.reduce((sum, item) => sum + item.inflow, 0))}</span>
+        <span><i class="report-legend-swatch outflow"></i>Outflows ${formatCompactCurrency(monthlySeries.reduce((sum, item) => sum + item.outflow, 0))}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderBudgetVsActualChart(monthlySeries, year) {
+  const maxValue = Math.max(1, ...monthlySeries.flatMap(item => [item.budgeted, item.actual]));
+
+  return `
+    <article class="report-card">
+      <div class="report-card-copy">
+        <p class="eyebrow">Budget Performance</p>
+        <h4>On-Budget Amount vs Actual</h4>
+        <p class="panel-hint">Assigned dollars versus actual categorized spend for ${year}.</p>
+      </div>
+      <div class="report-bar-chart">
+        ${monthlySeries.map(item => `
+          <div class="report-bar-group">
+            <div class="report-bar-pair">
+              <span class="report-bar budgeted" style="height: ${item.budgeted > 0 ? Math.max(4, (item.budgeted / maxValue) * 100) : 0}%" title="Budgeted ${formatCurrency(item.budgeted)}"></span>
+              <span class="report-bar actual" style="height: ${item.actual > 0 ? Math.max(4, (item.actual / maxValue) * 100) : 0}%" title="Actual ${formatCurrency(item.actual)}"></span>
+            </div>
+            <p class="report-axis-label">${escapeHtml(item.label)}</p>
+          </div>
+        `).join('')}
+      </div>
+      <div class="report-legend">
+        <span><i class="report-legend-swatch budgeted"></i>Budgeted ${formatCompactCurrency(monthlySeries.reduce((sum, item) => sum + item.budgeted, 0))}</span>
+        <span><i class="report-legend-swatch actual"></i>Actual ${formatCompactCurrency(monthlySeries.reduce((sum, item) => sum + item.actual, 0))}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderCategorySpendPieChart(selectedMonth, slices) {
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+
+  if (!total) {
+    return `
+      <article class="report-card">
+        <div class="report-card-copy">
+          <p class="eyebrow">Category Mix</p>
+          <h4>Spend by Category</h4>
+          <p class="panel-hint">No posted spending was found for ${formatMonthLabel(selectedMonth)}.</p>
+        </div>
+        <div class="empty-state compact-empty-state">
+          <h4>No category spend yet</h4>
+          <p>Once spending lands in the selected month, the category mix will show up here.</p>
+        </div>
+      </article>
+    `;
+  }
+
+  const palette = ['#1e7f74', '#d08a3a', '#3868b0', '#7d5ab5', '#bf5c4b', '#2f8f66', '#b36d3f', '#4e8f90'];
+  let cumulativePercent = 0;
+  const gradientStops = slices.map((slice, index) => {
+    const start = cumulativePercent;
+    cumulativePercent += (slice.value / total) * 100;
+    return `${palette[index % palette.length]} ${start.toFixed(2)}% ${cumulativePercent.toFixed(2)}%`;
+  });
+
+  return `
+    <article class="report-card">
+      <div class="report-card-copy">
+        <p class="eyebrow">Category Mix</p>
+        <h4>Spend by Category</h4>
+        <p class="panel-hint">Posted spending grouped by category for ${formatMonthLabel(selectedMonth)}.</p>
+      </div>
+      <div class="report-pie-layout">
+        <div class="report-pie-shell">
+          <div class="report-pie-chart" style="background: conic-gradient(${gradientStops.join(', ')});">
+            <div class="report-pie-hole">
+              <strong>${formatCompactCurrency(total)}</strong>
+              <span>Total spend</span>
+            </div>
+          </div>
+        </div>
+        <div class="report-pie-legend">
+          ${slices.map((slice, index) => `
+            <div class="report-pie-legend-item">
+              <span class="report-pie-legend-color" style="background:${palette[index % palette.length]}"></span>
+              <div>
+                <strong>${escapeHtml(slice.label)}</strong>
+                <p>${formatCurrency(slice.value)} • ${((slice.value / total) * 100).toFixed(1)}%</p>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+async function loadReports() {
+  const [transactions, budgetAllocations, categories, subCategories] = await Promise.all([
+    cache.getAll('transactions'),
+    cache.getAll('budgetAllocations'),
+    cache.getAll('categories'),
+    cache.getAll('subCategories')
+  ]);
+  const reportsView = document.getElementById('reports-view');
+  const yearSelect = document.getElementById('reports-year-select');
+  const monthContext = document.getElementById('reports-month-context');
+  const reportYears = getReportYears(transactions, budgetAllocations);
+  const selectedMonth = budgetState.selectedMonth || getCurrentMonthValue();
+  const selectedMonthYear = Number(selectedMonth.slice(0, 4));
+
+  if (!reportsState.selectedYear || !reportYears.includes(Number(reportsState.selectedYear))) {
+    reportsState.selectedYear = String(reportYears.includes(selectedMonthYear) ? selectedMonthYear : reportYears[0]);
+  }
+
+  yearSelect.innerHTML = reportYears
+    .map(year => `<option value="${year}" ${String(year) === String(reportsState.selectedYear) ? 'selected' : ''}>${year}</option>`)
+    .join('');
+  monthContext.textContent = `Current month spend is based on ${formatMonthLabel(selectedMonth)}.`;
+
+  const categoryMap = new Map(categories.map(category => [category.id, category]));
+  const subCategoryMap = new Map(subCategories.map(subCategory => [subCategory.id, subCategory]));
+  const monthlySeries = buildMonthlyReportSeries(Number(reportsState.selectedYear), transactions, budgetAllocations, categoryMap, subCategoryMap);
+  const categorySpendSlices = buildCategorySpendSlices(selectedMonth, transactions, categoryMap, subCategoryMap);
+
+  reportsView.innerHTML = `
+    ${renderInflowOutflowChart(monthlySeries)}
+    ${renderBudgetVsActualChart(monthlySeries, reportsState.selectedYear)}
+    ${renderCategorySpendPieChart(selectedMonth, categorySpendSlices)}
+  `;
+}
+
 async function createTransaction() {
   try {
     const row = getTransactionEditorRow();
@@ -3701,16 +4282,7 @@ window.onload = () => {
       }
 
       if (e.target.closest('.transaction-clear-filters')) {
-        transactionTableState.filters = {
-          date: '',
-          account: '',
-          payee: '',
-          category: '',
-          subCategory: '',
-          memo: '',
-          amount: '',
-          balance: ''
-        };
+        transactionTableState.filters = { ...DEFAULT_TRANSACTION_FILTERS };
         transactionFilterFocusState = null;
         loadTransactions();
       }
@@ -3718,11 +4290,70 @@ window.onload = () => {
     document.getElementById('transaction-filters-toggle').addEventListener('click', () => {
       transactionTableState.filtersVisible = !transactionTableState.filtersVisible;
       transactionFilterFocusState = null;
-      document.getElementById('transaction-filters-toggle').classList.toggle('is-active', transactionTableState.filtersVisible);
       loadTransactions();
     });
     document.getElementById('transaction-import-button').addEventListener('click', async () => {
       await importTransactionsFromCsv();
+    });
+    document.getElementById('transaction-export-button').addEventListener('click', async () => {
+      await exportTransactionsCsv();
+    });
+    document.getElementById('transfers-list').addEventListener('input', e => {
+      if (!e.target.classList.contains('transfer-filter-input')) {
+        return;
+      }
+
+      transferFilterFocusState = {
+        key: e.target.dataset.filterKey,
+        selectionStart: typeof e.target.selectionStart === 'number' ? e.target.selectionStart : null,
+        selectionEnd: typeof e.target.selectionEnd === 'number' ? e.target.selectionEnd : null
+      };
+      transferTableState.filters[e.target.dataset.filterKey] = e.target.value;
+      loadTransfers();
+    });
+    document.getElementById('transfers-list').addEventListener('change', e => {
+      if (!e.target.classList.contains('transfer-filter-input')) {
+        return;
+      }
+
+      transferFilterFocusState = {
+        key: e.target.dataset.filterKey,
+        selectionStart: typeof e.target.selectionStart === 'number' ? e.target.selectionStart : null,
+        selectionEnd: typeof e.target.selectionEnd === 'number' ? e.target.selectionEnd : null
+      };
+      transferTableState.filters[e.target.dataset.filterKey] = e.target.value;
+      loadTransfers();
+    });
+    document.getElementById('transfers-list').addEventListener('click', e => {
+      const sortButton = e.target.closest('.transaction-sort-button[data-table-type="transfers"]');
+
+      if (sortButton) {
+        const { sortKey } = sortButton.dataset;
+
+        if (transferTableState.sortKey === sortKey) {
+          transferTableState.sortDirection = transferTableState.sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+          transferTableState.sortKey = sortKey;
+          transferTableState.sortDirection = sortKey === 'date' ? 'desc' : 'asc';
+        }
+
+        loadTransfers();
+        return;
+      }
+
+      if (e.target.closest('.transfer-clear-filters')) {
+        transferTableState.filters = { ...DEFAULT_TRANSFER_FILTERS };
+        transferFilterFocusState = null;
+        loadTransfers();
+      }
+    });
+    document.getElementById('transfer-filters-toggle').addEventListener('click', () => {
+      transferTableState.filtersVisible = !transferTableState.filtersVisible;
+      transferFilterFocusState = null;
+      loadTransfers();
+    });
+    document.getElementById('transfer-export-button').addEventListener('click', async () => {
+      await exportTransfersCsv();
     });
   document.getElementById('budget-month-prev').addEventListener('click', async () => {
     budgetState.selectedMonth = shiftMonthValue(budgetState.selectedMonth || getCurrentMonthValue(), -1);
@@ -3774,9 +4405,16 @@ window.onload = () => {
     resetBudgetDraftForVisibleMonths();
     setStatus('Reset the visible three-month budget draft.');
   });
+  document.getElementById('budget-export-visible').addEventListener('click', () => {
+    exportVisibleBudgetMonthsCsv();
+  });
   document.getElementById('budget-save-month').addEventListener('click', async () => {
     await saveBudgetMonths();
     setStatus('Saved the visible three-month budget window.');
+  });
+  document.getElementById('reports-year-select').addEventListener('change', async event => {
+    reportsState.selectedYear = event.target.value;
+    await loadReports();
   });
   document.getElementById('budget-view').addEventListener('click', (e) => {
     const noteToggleButton = e.target.closest('[data-note-toggle-entry-key]');
