@@ -263,15 +263,12 @@
                 </div>
                 <div class="budget-heading-controls">
                   <div class="budget-month-nav" aria-label="Budget month navigation">
+                    <p class="eyebrow budget-month-nav-label">Selected Month</p>
                     <button type="button" id="budget-month-prev" class="secondary-button compact-button">Previous</button>
                     <div class="budget-month-labels">
-                      <div class="centered">
-                        <p class="eyebrow">Selected Month</p>
-                        <h3 id="budget-month-label">Month</h3>
-                      </div>
+                      <input type="month" id="budget-month-picker" class="budget-month-picker" aria-label="Selected budget month">
                     </div>
                     <button type="button" id="budget-month-next" class="secondary-button compact-button">Next</button>
-                    <button type="button" id="budget-month-current" class="secondary-button compact-button">Current Month</button>
                   </div>
                   <div class="budget-helper-actions budget-workspace-actions">
                     <button type="button" id="budget-copy-previous" class="secondary-button compact-button">Copy Previous Month</button>

@@ -1088,9 +1088,11 @@ function renderBudgetWorkspace() {
     return;
   }
 
-  document.getElementById('budget-month-label').textContent = formatMonthLabel(
-    budgetState.selectedMonth || budgetState.visibleMonths[1] || budgetState.visibleMonths[0]
-  );
+  const selectedMonth = budgetState.selectedMonth || budgetState.visibleMonths[1] || budgetState.visibleMonths[0] || getCurrentMonthValue();
+  const monthPicker = document.getElementById('budget-month-picker');
+  monthPicker.value = selectedMonth;
+  monthPicker.title = formatMonthLabel(selectedMonth);
+  monthPicker.setAttribute('aria-label', `Selected budget month: ${formatMonthLabel(selectedMonth)}`);
   updateBudgetDraftHint();
 
   const monthModels = budgetState.visibleMonths.map(month => {
@@ -3730,8 +3732,13 @@ window.onload = () => {
     budgetState.selectedMonth = shiftMonthValue(budgetState.selectedMonth || getCurrentMonthValue(), 1);
     await loadBudgetView({ month: budgetState.selectedMonth });
   });
-  document.getElementById('budget-month-current').addEventListener('click', async () => {
-    budgetState.selectedMonth = getCurrentMonthValue();
+  document.getElementById('budget-month-picker').addEventListener('change', async event => {
+    if (!event.target.value) {
+      event.target.value = budgetState.selectedMonth || getCurrentMonthValue();
+      return;
+    }
+
+    budgetState.selectedMonth = event.target.value;
     await loadBudgetView({ month: budgetState.selectedMonth });
   });
   document.getElementById('budget-copy-previous').addEventListener('click', async () => {
