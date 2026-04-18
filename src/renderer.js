@@ -63,7 +63,7 @@ let budgetState = {
   expandedNoteKey: null
 };
 let reportsState = {
-  selectedYear: ''
+  selectedMonth: ''
 };
 const sectionCopy = {
   accounts: {
@@ -3274,31 +3274,6 @@ function exportVisibleBudgetMonthsCsv() {
   setStatus(`Exported ${rows.length} visible budget row${rows.length === 1 ? '' : 's'}.`);
 }
 
-function getReportYears(transactions, budgetAllocations) {
-  const years = new Set([
-    Number((budgetState.selectedMonth || getCurrentMonthValue()).slice(0, 4)),
-    new Date().getFullYear()
-  ]);
-
-  transactions.forEach(transaction => {
-    const year = Number(String(transaction.date || '').slice(0, 4));
-
-    if (Number.isFinite(year)) {
-      years.add(year);
-    }
-  });
-
-  budgetAllocations.forEach(allocation => {
-    const year = Number(String(allocation.month || '').slice(0, 4));
-
-    if (Number.isFinite(year)) {
-      years.add(year);
-    }
-  });
-
-  return Array.from(years).sort((left, right) => right - left);
-}
-
 function isOnBudgetCategoryReference(categoryId, subCategoryId, categoryMap, subCategoryMap) {
   const category = categoryMap.get(categoryId);
 
@@ -3395,14 +3370,15 @@ function buildLineChartPath(values, maxValue, chartWidth, chartHeight) {
 
 function renderInflowOutflowChart(monthlySeries) {
   const chartWidth = 640;
-  const chartHeight = 220;
-  const maxValue = Math.max(1, ...monthlySeries.flatMap(item => [item.inflow, item.outflow]));
+  const chartHeight = 160;
+  const dataMaxValue = Math.max(1, ...monthlySeries.flatMap(item => [item.inflow, item.outflow]));
+  const maxValue = Math.max(1, dataMaxValue * 1.14);
   const inflowPath = buildLineChartPath(monthlySeries.map(item => item.inflow), maxValue, chartWidth, chartHeight);
   const outflowPath = buildLineChartPath(monthlySeries.map(item => item.outflow), maxValue, chartWidth, chartHeight);
   const xStep = monthlySeries.length > 1 ? chartWidth / (monthlySeries.length - 1) : chartWidth / 2;
 
   return `
-    <article class="report-card report-card-wide">
+    <article class="report-card">
       <div class="report-card-copy">
         <p class="eyebrow">Cashflow</p>
         <h4>Inflow vs Outflow</h4>
@@ -3422,8 +3398,12 @@ function renderInflowOutflowChart(monthlySeries) {
             const outflowY = chartHeight - ((item.outflow / maxValue) * chartHeight);
 
             return `
-              <circle cx="${x.toFixed(2)}" cy="${inflowY.toFixed(2)}" r="3.5" class="report-line-dot inflow" />
-              <circle cx="${x.toFixed(2)}" cy="${outflowY.toFixed(2)}" r="3.5" class="report-line-dot outflow" />
+              <circle cx="${x.toFixed(2)}" cy="${inflowY.toFixed(2)}" r="4" class="report-line-dot inflow">
+                <title>${escapeHtml(`${item.label} inflow: ${formatCurrency(item.inflow)}`)}</title>
+              </circle>
+              <circle cx="${x.toFixed(2)}" cy="${outflowY.toFixed(2)}" r="4" class="report-line-dot outflow">
+                <title>${escapeHtml(`${item.label} outflow: ${formatCurrency(item.outflow)}`)}</title>
+              </circle>
               <text x="${x.toFixed(2)}" y="${(chartHeight + 18).toFixed(2)}" text-anchor="middle" class="report-axis-label">${escapeHtml(item.label)}</text>
             `;
           }).join('')}
@@ -3441,7 +3421,7 @@ function renderBudgetVsActualChart(monthlySeries, year) {
   const maxValue = Math.max(1, ...monthlySeries.flatMap(item => [item.budgeted, item.actual]));
 
   return `
-    <article class="report-card">
+    <article class="report-card report-card-wide">
       <div class="report-card-copy">
         <p class="eyebrow">Budget Performance</p>
         <h4>On-Budget Amount vs Actual</h4>
@@ -3451,8 +3431,8 @@ function renderBudgetVsActualChart(monthlySeries, year) {
         ${monthlySeries.map(item => `
           <div class="report-bar-group">
             <div class="report-bar-pair">
-              <span class="report-bar budgeted" style="height: ${item.budgeted > 0 ? Math.max(4, (item.budgeted / maxValue) * 100) : 0}%" title="Budgeted ${formatCurrency(item.budgeted)}"></span>
-              <span class="report-bar actual" style="height: ${item.actual > 0 ? Math.max(4, (item.actual / maxValue) * 100) : 0}%" title="Actual ${formatCurrency(item.actual)}"></span>
+              <span class="report-bar budgeted ${item.budgeted > 0 ? 'has-value' : ''}" style="height: ${item.budgeted > 0 ? Math.max(4, (item.budgeted / maxValue) * 100) : 0}%" title="${escapeHtml(`${item.label} budgeted: ${formatCurrency(item.budgeted)}`)}"></span>
+              <span class="report-bar actual ${item.actual > 0 ? 'has-value' : ''}" style="height: ${item.actual > 0 ? Math.max(4, (item.actual / maxValue) * 100) : 0}%" title="${escapeHtml(`${item.label} actual: ${formatCurrency(item.actual)}`)}"></span>
             </div>
             <p class="report-axis-label">${escapeHtml(item.label)}</p>
           </div>
@@ -3492,6 +3472,31 @@ function renderCategorySpendPieChart(selectedMonth, slices) {
     cumulativePercent += (slice.value / total) * 100;
     return `${palette[index % palette.length]} ${start.toFixed(2)}% ${cumulativePercent.toFixed(2)}%`;
   });
+  let segmentStart = 0;
+  const segmentMarkup = slices.map((slice, index) => {
+    const slicePercent = (slice.value / total) * 100;
+    const segmentEnd = segmentStart + slicePercent;
+    const midPercent = segmentStart + (slicePercent / 2);
+    const angle = (midPercent / 100) * Math.PI * 2 - (Math.PI / 2);
+    const outerRadius = 50;
+    const innerRadius = 22;
+    const center = 50;
+    const x = center + (((outerRadius + innerRadius) / 2) * Math.cos(angle));
+    const y = center + (((outerRadius + innerRadius) / 2) * Math.sin(angle));
+
+    segmentStart = segmentEnd;
+
+    return `
+      <circle
+        class="report-pie-segment-hitbox"
+        cx="${x.toFixed(2)}"
+        cy="${y.toFixed(2)}"
+        r="13"
+      >
+        <title>${escapeHtml(`${slice.label}: ${formatCurrency(slice.value)} (${((slice.value / total) * 100).toFixed(1)}%)`)}</title>
+      </circle>
+    `;
+  }).join('');
 
   return `
     <article class="report-card">
@@ -3503,6 +3508,9 @@ function renderCategorySpendPieChart(selectedMonth, slices) {
       <div class="report-pie-layout">
         <div class="report-pie-shell">
           <div class="report-pie-chart" style="background: conic-gradient(${gradientStops.join(', ')});">
+            <svg class="report-pie-overlay" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+              ${segmentMarkup}
+            </svg>
             <div class="report-pie-hole">
               <strong>${formatCompactCurrency(total)}</strong>
               <span>Total spend</span>
@@ -3533,29 +3541,23 @@ async function loadReports() {
     cache.getAll('subCategories')
   ]);
   const reportsView = document.getElementById('reports-view');
-  const yearSelect = document.getElementById('reports-year-select');
-  const monthContext = document.getElementById('reports-month-context');
-  const reportYears = getReportYears(transactions, budgetAllocations);
-  const selectedMonth = budgetState.selectedMonth || getCurrentMonthValue();
-  const selectedMonthYear = Number(selectedMonth.slice(0, 4));
+  const monthPicker = document.getElementById('reports-month-picker');
+  const selectedMonth = reportsState.selectedMonth || getCurrentMonthValue();
+  const reportYear = Number(selectedMonth.slice(0, 4));
 
-  if (!reportsState.selectedYear || !reportYears.includes(Number(reportsState.selectedYear))) {
-    reportsState.selectedYear = String(reportYears.includes(selectedMonthYear) ? selectedMonthYear : reportYears[0]);
-  }
-
-  yearSelect.innerHTML = reportYears
-    .map(year => `<option value="${year}" ${String(year) === String(reportsState.selectedYear) ? 'selected' : ''}>${year}</option>`)
-    .join('');
-  monthContext.textContent = `Current month spend is based on ${formatMonthLabel(selectedMonth)}.`;
+  reportsState.selectedMonth = selectedMonth;
+  monthPicker.value = selectedMonth;
+  monthPicker.title = formatMonthLabel(selectedMonth);
+  monthPicker.setAttribute('aria-label', `Selected report month: ${formatMonthLabel(selectedMonth)}`);
 
   const categoryMap = new Map(categories.map(category => [category.id, category]));
   const subCategoryMap = new Map(subCategories.map(subCategory => [subCategory.id, subCategory]));
-  const monthlySeries = buildMonthlyReportSeries(Number(reportsState.selectedYear), transactions, budgetAllocations, categoryMap, subCategoryMap);
+  const monthlySeries = buildMonthlyReportSeries(reportYear, transactions, budgetAllocations, categoryMap, subCategoryMap);
   const categorySpendSlices = buildCategorySpendSlices(selectedMonth, transactions, categoryMap, subCategoryMap);
 
   reportsView.innerHTML = `
+    ${renderBudgetVsActualChart(monthlySeries, reportYear)}
     ${renderInflowOutflowChart(monthlySeries)}
-    ${renderBudgetVsActualChart(monthlySeries, reportsState.selectedYear)}
     ${renderCategorySpendPieChart(selectedMonth, categorySpendSlices)}
   `;
 }
@@ -3585,6 +3587,22 @@ async function createTransaction() {
   } catch (error) {
     setStatus(error.message);
   }
+}
+
+async function submitTransactionEditorRow(row) {
+  if (!row) {
+    return;
+  }
+
+  const rowMode = row.dataset.rowMode;
+  const transactionId = row.dataset.transactionId;
+
+  if (rowMode === 'edit' && transactionId) {
+    await saveTransactionEdit(transactionId);
+    return;
+  }
+
+  await createTransaction();
 }
 
 function clearTransactionDraft() {
@@ -3716,6 +3734,22 @@ async function createTransfer() {
   } catch (error) {
     setStatus(error.message);
   }
+}
+
+async function submitTransferEditorRow(row) {
+  if (!row) {
+    return;
+  }
+
+  const rowMode = row.dataset.rowMode;
+  const transferId = row.dataset.transferId;
+
+  if (rowMode === 'edit' && transferId) {
+    await saveTransferEdit(transferId);
+    return;
+  }
+
+  await createTransfer();
 }
 
 function cancelTransferEdit() {
@@ -4264,6 +4298,20 @@ window.onload = () => {
       transactionTableState.filters[e.target.dataset.filterKey] = e.target.value;
       loadTransactions();
     });
+    document.getElementById('transactions-list').addEventListener('keydown', async e => {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== 'Enter') {
+        return;
+      }
+
+      const editorRow = e.target.closest('.transaction-editor-row');
+
+      if (!editorRow || e.target.classList.contains('txn-filter-input')) {
+        return;
+      }
+
+      e.preventDefault();
+      await submitTransactionEditorRow(editorRow);
+    });
     document.getElementById('transactions-list').addEventListener('click', (e) => {
       const sortButton = e.target.closest('.transaction-sort-button');
 
@@ -4323,6 +4371,20 @@ window.onload = () => {
       };
       transferTableState.filters[e.target.dataset.filterKey] = e.target.value;
       loadTransfers();
+    });
+    document.getElementById('transfers-list').addEventListener('keydown', async e => {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== 'Enter') {
+        return;
+      }
+
+      const editorRow = e.target.closest('.transfer-editor-row');
+
+      if (!editorRow || e.target.classList.contains('transfer-filter-input')) {
+        return;
+      }
+
+      e.preventDefault();
+      await submitTransferEditorRow(editorRow);
     });
     document.getElementById('transfers-list').addEventListener('click', e => {
       const sortButton = e.target.closest('.transaction-sort-button[data-table-type="transfers"]');
@@ -4412,8 +4474,13 @@ window.onload = () => {
     await saveBudgetMonths();
     setStatus('Saved the visible three-month budget window.');
   });
-  document.getElementById('reports-year-select').addEventListener('change', async event => {
-    reportsState.selectedYear = event.target.value;
+  document.getElementById('reports-month-picker').addEventListener('change', async event => {
+    if (!event.target.value) {
+      event.target.value = reportsState.selectedMonth || getCurrentMonthValue();
+      return;
+    }
+
+    reportsState.selectedMonth = event.target.value;
     await loadReports();
   });
   document.getElementById('budget-view').addEventListener('click', (e) => {

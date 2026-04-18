@@ -472,9 +472,9 @@ h3 {
   min-width: 8.5rem;
 }
 
-.reports-month-context {
-  margin: 0;
-  text-align: right;
+.reports-control input[type="month"] {
+  min-width: 10.5rem;
+  width: 100%;
 }
 
 .transfer-grid-toolbar {
@@ -1323,7 +1323,7 @@ select.txn-input {
 }
 
 .report-line-chart {
-  padding: 0.25rem 0.15rem 0 0;
+  padding: 0.1rem 0.15rem 0 0;
 }
 
 .report-line-chart svg {
@@ -1365,6 +1365,15 @@ select.txn-input {
   fill: #c76d48;
   stroke: rgba(255, 253, 248, 0.96);
   stroke-width: 2;
+}
+
+.report-line-dot {
+  cursor: pointer;
+  transition: opacity 140ms ease;
+}
+
+.report-line-dot:hover {
+  opacity: 0.82;
 }
 
 .report-legend-swatch.outflow {
@@ -1411,7 +1420,7 @@ select.txn-input {
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 0.55rem;
   align-items: end;
-  min-height: 15.5rem;
+  min-height: 14.5rem;
   padding-top: 0.35rem;
 }
 
@@ -1429,14 +1438,25 @@ select.txn-input {
   justify-content: center;
   gap: 0.18rem;
   width: 100%;
-  min-height: 14rem;
+  height: 14rem;
 }
 
 .report-bar {
   display: block;
   width: 0.78rem;
-  min-height: 0.25rem;
+  min-height: 0;
   border-radius: 999px 999px 0 0;
+  cursor: pointer;
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.report-bar.has-value {
+  min-height: 0.25rem;
+}
+
+.report-bar:hover {
+  opacity: 0.85;
+  transform: translateY(-1px);
 }
 
 .report-bar.budgeted {
@@ -1465,6 +1485,23 @@ select.txn-input {
   aspect-ratio: 1;
   border-radius: 50%;
   box-shadow: inset 0 0 0 1px rgba(22, 51, 49, 0.06);
+}
+
+.report-pie-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.report-pie-segment-hitbox {
+  fill: transparent;
+  cursor: pointer;
+  transition: fill 140ms ease;
+}
+
+.report-pie-segment-hitbox:hover {
+  fill: rgba(255, 255, 255, 0.14);
 }
 
 .report-pie-hole {
@@ -2030,10 +2067,6 @@ select.txn-input {
 
   .reports-controls {
     justify-items: stretch;
-  }
-
-  .reports-month-context {
-    text-align: left;
   }
 
   .transfer-grid-toolbar {
