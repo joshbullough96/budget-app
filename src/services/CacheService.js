@@ -16,6 +16,7 @@ class CacheService {
     this.db.categories = new Datastore({ filename: this.getCollectionPath('categories'), autoload: true });
     this.db.subCategories = new Datastore({ filename: this.getCollectionPath('subCategories'), autoload: true });
     this.db.transactions = new Datastore({ filename: this.getCollectionPath('transactions'), autoload: true });
+    this.db.transfers = new Datastore({ filename: this.getCollectionPath('transfers'), autoload: true });
     this.db.budgetAllocations = new Datastore({ filename: this.getCollectionPath('budgetAllocations'), autoload: true });
   }
 
@@ -31,7 +32,7 @@ class CacheService {
 
   migrateExistingData(targetDirectory) {
     const legacyDirectory = path.join(__dirname, '../../data');
-    const collections = ['accounts', 'categories', 'subCategories', 'transactions', 'budgetAllocations'];
+    const collections = ['accounts', 'categories', 'subCategories', 'transactions', 'transfers', 'budgetAllocations'];
 
     collections.forEach((collection) => {
       const legacyFile = path.join(legacyDirectory, `${collection}.db`);

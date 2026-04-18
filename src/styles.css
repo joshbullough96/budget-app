@@ -1055,12 +1055,14 @@ textarea {
   font-size: 0.76rem;
 }
 
-.transaction-table-shell {
+.transaction-table-shell,
+.transfer-table-shell {
   display: grid;
   gap: 1rem;
 }
 
-.transaction-table {
+.transaction-table,
+.transfer-table {
   overflow: hidden;
   border: 1px solid rgba(22, 51, 49, 0.08);
   border-radius: 22px;
@@ -1076,11 +1078,22 @@ textarea {
   border-top: 1px solid rgba(22, 51, 49, 0.08);
 }
 
-.transaction-row > div {
+.transfer-row {
+  display: grid;
+  grid-template-columns: 140px 170px 170px 120px 130px minmax(180px, 1fr) 120px;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  border-top: 1px solid rgba(22, 51, 49, 0.08);
+}
+
+.transaction-row > div,
+.transfer-row > div {
   min-width: 0;
 }
 
-.transaction-head {
+.transaction-head,
+.transfer-head {
   border-top: none;
   background: rgba(22, 51, 49, 0.04);
   color: var(--muted);
@@ -1130,12 +1143,18 @@ textarea {
   justify-content: center;
 }
 
-.transaction-editor-row {
+.transaction-editor-row,
+.transfer-editor-row {
   background: rgba(30, 127, 116, 0.04);
 }
 
-.transaction-editor-row.is-editing {
+.transaction-editor-row.is-editing,
+.transfer-editor-row.is-editing {
   background: rgba(30, 127, 116, 0.08);
+}
+
+.transaction-row.is-pending {
+  background: rgba(22, 51, 49, 0.025);
 }
 
 .txn-input {
@@ -1177,6 +1196,11 @@ select.txn-input {
 
 .transaction-muted-cell {
   color: #8b9a97;
+}
+
+.transaction-pending-balance {
+  font-weight: 600;
+  text-align: left;
 }
 
 .transaction-empty-state {
@@ -1504,6 +1528,11 @@ select.txn-input {
   color: #9b6618;
 }
 
+.pill.silent {
+  background: rgba(200, 137, 52, 0.12);
+  color: rgba(0, 0, 0, 0.2)
+}
+
 .placeholder-panel {
   display: grid;
   place-items: center;
@@ -1696,11 +1725,16 @@ select.txn-input {
     grid-template-columns: 1fr;
   }
 
-  .transaction-table {
+  .transaction-table,
+  .transfer-table {
     overflow-x: auto;
   }
 
   .transaction-row {
     min-width: 1230px;
+  }
+
+  .transfer-row {
+    min-width: 1040px;
   }
 }

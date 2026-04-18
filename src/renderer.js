@@ -6,6 +6,7 @@ const Account = require('./models/Account');
 const Category = require('./models/Category');
 const SubCategory = require('./models/SubCategory');
 const Transaction = require('./models/Transaction');
+const Transfer = require('./models/Transfer');
 const BudgetAllocation = require('./models/BudgetAllocation');
 
 const cache = new CacheService();
@@ -17,6 +18,7 @@ let categoriesSortable = null;
 let subCategorySortables = [];
 let expandedCategoryIds = new Set();
 let editingTransactionId = null;
+let editingTransferId = null;
 let transactionSubCategoriesCache = [];
 let budgetDirtyToastActive = false;
 let transactionTableState = {
@@ -57,6 +59,10 @@ const sectionCopy = {
     title: 'Transaction Activity',
     subtitle: 'Review inflows, outflows, and the story behind your money.'
   },
+  transfers: {
+    title: 'Account Transfers',
+    subtitle: 'Move money between accounts without treating it like spending.'
+  },
   budget: {
     title: 'Monthly Budget',
     subtitle: 'Assign every dollar with confidence before the month gets busy.'
@@ -85,6 +91,9 @@ async function loadSectionData(sectionId) {
       break;
     case 'transactions':
       await loadTransactions();
+      break;
+    case 'transfers':
+      await loadTransfers();
       break;
     case 'budget':
       await loadBudgetView();
@@ -193,7 +202,7 @@ async function loadAccounts() {
           </div>
           <div class="account-card-side">
             <div class="account-card-meta-row">
-              <div class="pill ${acc.offBudget || !isActive ? 'warn' : ''}">${accountStatus}</div>
+              <div class="pill ${acc.offBudget ? 'warn' : !isActive ? 'silent' : ''}">${accountStatus}</div>
               <div class="icon-actions account-card-actions">
                 <button type="button" class="icon-button" onclick="editAccount('${acc.id}')" aria-label="Edit account" title="Edit account">
                   ${getActionIcon('edit')}
@@ -363,8 +372,9 @@ function syncData() {
 }
 
 async function loadTransactions() {
-  const [transactions, accounts, categories, subCategories] = await Promise.all([
+  const [transactions, transfers, accounts, categories, subCategories] = await Promise.all([
     cache.getAll('transactions'),
+    cache.getAll('transfers'),
     cache.getAll('accounts'),
     cache.getAll('categories'),
     cache.getAll('subCategories')
@@ -374,8 +384,9 @@ async function loadTransactions() {
   const accountMap = new Map(accounts.map(account => [account.id, account]));
   const categoryMap = new Map(categories.map(category => [category.id, category]));
   const subCategoryMap = new Map(subCategories.map(subCategory => [subCategory.id, subCategory]));
+  const transferMap = new Map(transfers.map(transfer => [transfer.id, transfer]));
   transactionSubCategoriesCache = subCategories;
-  const visibleTransactions = getFilteredAndSortedTransactions(transactions, accountMap, categoryMap, subCategoryMap);
+  const visibleTransactions = getFilteredAndSortedTransactions(transactions, accountMap, categoryMap, subCategoryMap, transferMap);
 
   const emptyMarkup = !visibleTransactions.length
     ? `
@@ -424,7 +435,7 @@ async function loadTransactions() {
           });
         }
 
-          return renderTransactionDisplayRow(transaction, accountMap, categoryMap, subCategoryMap);
+          return renderTransactionDisplayRow(transaction, accountMap, categoryMap, subCategoryMap, transferMap);
         }).join('')}
     </div>
     ${emptyMarkup}
@@ -441,6 +452,62 @@ async function loadTransactions() {
       }
     }
   }
+}
+
+function compareTransfersForDisplay(left, right) {
+  const dateDifference = parseDateValue(right.transferDate) - parseDateValue(left.transferDate);
+
+  if (dateDifference !== 0) {
+    return dateDifference;
+  }
+
+  return String(right.id).localeCompare(String(left.id));
+}
+
+async function loadTransfers() {
+  const [transfers, accounts] = await Promise.all([
+    cache.getAll('transfers'),
+    cache.getAll('accounts')
+  ]);
+  const list = document.getElementById('transfers-list');
+  const accountMap = new Map(accounts.map(account => [account.id, account]));
+  const selectableAccounts = sortItemsForDisplay(accounts.filter(account => account.active !== false));
+  const orderedTransfers = transfers.slice().sort(compareTransfersForDisplay);
+  const emptyMarkup = !orderedTransfers.length
+    ? `
+        <div class="empty-state transaction-empty-state">
+          <h4>No transfers yet</h4>
+          <p>Create one from the first row to move money between accounts.</p>
+        </div>
+      `
+    : '';
+
+  list.innerHTML = `
+    <div class="transfer-table">
+      <div class="transfer-row transfer-head">
+        <div>Date</div>
+        <div>From Account</div>
+        <div>To Account</div>
+        <div>Amount</div>
+        <div>Status</div>
+        <div>Memo</div>
+        <div>Actions</div>
+      </div>
+      ${renderTransferEditorRow({ rowMode: 'create', accounts: selectableAccounts })}
+      ${orderedTransfers.map(transfer => {
+        if (editingTransferId === transfer.id) {
+          return renderTransferEditorRow({
+            rowMode: 'edit',
+            transfer,
+            accounts: selectableAccounts
+          });
+        }
+
+        return renderTransferDisplayRow(transfer, accountMap);
+      }).join('')}
+    </div>
+    ${emptyMarkup}
+  `;
 }
 
 function shiftMonthValue(monthValue, offset) {
@@ -1812,43 +1879,92 @@ function getTransactionSortIndicator(sortKey) {
     : ' <span class="transaction-sort-indicator" aria-hidden="true">&#8595;</span>';
 }
 
-function buildTransactionViewModel(transaction, accountMap, categoryMap, subCategoryMap) {
+function normalizeTransferStatus(status) {
+  return status === 'completed' ? 'completed' : 'scheduled';
+}
+
+function getTransferStatusLabel(status) {
+  return normalizeTransferStatus(status) === 'completed' ? 'Completed' : 'Scheduled';
+}
+
+function buildTransferTransactionPayees(originAccount, destinationAccount) {
+  return {
+    originPayee: `Transfer to ${destinationAccount?.name || 'destination account'}`,
+    destinationPayee: `Transfer from ${originAccount?.name || 'origin account'}`
+  };
+}
+
+function getTransferDisplayContext(transaction, transfer, accountMap) {
+  if (!transaction.transferId) {
+    return null;
+  }
+
+  const originAccount = transfer ? accountMap.get(transfer.originAccountId) : null;
+  const destinationAccount = transfer ? accountMap.get(transfer.destinationAccountId) : null;
+  const payees = buildTransferTransactionPayees(originAccount, destinationAccount);
+  const isOriginSide = transfer
+    ? transfer.originTransactionId === transaction.id
+    : Number(transaction.amount || 0) < 0;
+
+  return {
+    payee: isOriginSide ? payees.originPayee : payees.destinationPayee,
+    category: 'Transfer',
+    subCategory: '',
+    memo: transfer ? transfer.memo || '' : transaction.memo || '',
+    isOriginSide
+  };
+}
+
+function buildTransactionViewModel(transaction, accountMap, categoryMap, subCategoryMap, transferMap = new Map()) {
   const account = accountMap.get(transaction.accountId);
   const category = categoryMap.get(transaction.categoryId);
   const subCategory = transaction.subCategoryId ? subCategoryMap.get(transaction.subCategoryId) : null;
+  const transfer = transaction.transferId ? transferMap.get(transaction.transferId) : null;
+  const transferContext = getTransferDisplayContext(transaction, transfer, accountMap);
   const runningBalanceValue = Number(transaction.runningBalance);
+  const balanceLabel = transaction.pending
+    ? 'Pending'
+    : (Number.isFinite(runningBalanceValue) ? formatCurrency(runningBalanceValue) : '');
+  const payeeLabel = transferContext?.payee || transaction.payee || '';
+  const categoryLabel = transferContext?.category || (category ? category.name : 'Uncategorized');
+  const subCategoryLabel = transferContext?.subCategory || (subCategory ? subCategory.name : '');
+  const memoLabel = transferContext?.memo ?? (transaction.memo || '');
 
   return {
     transaction,
     values: {
       date: formatDate(transaction.date),
       account: account ? account.name : 'Unknown account',
-      payee: transaction.payee || '',
-      category: category ? category.name : 'Uncategorized',
-      subCategory: subCategory ? subCategory.name : '',
-      memo: transaction.memo || '',
+      payee: payeeLabel,
+      category: categoryLabel,
+      subCategory: subCategoryLabel,
+      memo: memoLabel,
       amount: formatCurrency(transaction.amount),
-      balance: Number.isFinite(runningBalanceValue) ? formatCurrency(runningBalanceValue) : ''
+      balance: balanceLabel
     },
     filterValues: {
       date: [transaction.date, formatDate(transaction.date)],
       account: [account ? account.name : 'Unknown account'],
-      payee: [transaction.payee || ''],
-      category: [category ? category.name : 'Uncategorized'],
-      subCategory: [subCategory ? subCategory.name : ''],
-      memo: [transaction.memo || ''],
+      payee: [payeeLabel],
+      category: [categoryLabel],
+      subCategory: [subCategoryLabel],
+      memo: [memoLabel],
       amount: [Number(transaction.amount || 0), formatCurrency(transaction.amount)],
-      balance: [Number.isFinite(runningBalanceValue) ? runningBalanceValue : '', Number.isFinite(runningBalanceValue) ? formatCurrency(runningBalanceValue) : '']
+      balance: transaction.pending
+        ? ['Pending']
+        : [Number.isFinite(runningBalanceValue) ? runningBalanceValue : '', Number.isFinite(runningBalanceValue) ? formatCurrency(runningBalanceValue) : '']
     },
     raw: {
       date: parseDateValue(transaction.date).getTime(),
       account: account ? account.name : '',
-      payee: transaction.payee || '',
-      category: category ? category.name : '',
-      subCategory: subCategory ? subCategory.name : '',
-      memo: transaction.memo || '',
+      payee: payeeLabel,
+      category: categoryLabel,
+      subCategory: subCategoryLabel,
+      memo: memoLabel,
       amount: Number(transaction.amount || 0),
-      balance: Number.isFinite(runningBalanceValue) ? runningBalanceValue : Number.NEGATIVE_INFINITY
+      balance: transaction.pending
+        ? Number.NEGATIVE_INFINITY
+        : (Number.isFinite(runningBalanceValue) ? runningBalanceValue : Number.NEGATIVE_INFINITY)
     }
   };
 }
@@ -1864,8 +1980,8 @@ function matchesTransactionFilter(value, filterValue) {
   return candidates.some(candidate => String(candidate || '').toLowerCase().includes(normalizedFilter));
 }
 
-function getFilteredAndSortedTransactions(transactions, accountMap, categoryMap, subCategoryMap) {
-  const models = transactions.map(transaction => buildTransactionViewModel(transaction, accountMap, categoryMap, subCategoryMap));
+function getFilteredAndSortedTransactions(transactions, accountMap, categoryMap, subCategoryMap, transferMap = new Map()) {
+  const models = transactions.map(transaction => buildTransactionViewModel(transaction, accountMap, categoryMap, subCategoryMap, transferMap));
   const filteredModels = models.filter(model => Object.entries(transactionTableState.filters).every(([key, filterValue]) => {
     if (!filterValue) {
       return true;
@@ -2081,30 +2197,111 @@ function renderTransactionEditorRow({ rowMode, transaction = null, accounts, cat
   `;
 }
 
-function renderTransactionDisplayRow(transaction, accountMap, categoryMap, subCategoryMap) {
+function renderTransactionDisplayRow(transaction, accountMap, categoryMap, subCategoryMap, transferMap = new Map()) {
   const account = accountMap.get(transaction.accountId);
   const category = categoryMap.get(transaction.categoryId);
   const subCategory = transaction.subCategoryId ? subCategoryMap.get(transaction.subCategoryId) : null;
+  const transfer = transaction.transferId ? transferMap.get(transaction.transferId) : null;
+  const transferContext = getTransferDisplayContext(transaction, transfer, accountMap);
   const amountClass = Number(transaction.amount) >= 0 ? 'positive' : 'negative';
-  const runningBalance = Number.isFinite(Number(transaction.runningBalance))
-    ? formatCurrency(transaction.runningBalance)
-    : '';
+  const runningBalance = transaction.pending
+    ? 'Pending'
+    : (Number.isFinite(Number(transaction.runningBalance))
+      ? formatCurrency(transaction.runningBalance)
+      : '');
+  const payeeLabel = transferContext?.payee || transaction.payee || '';
+  const categoryLabel = transferContext?.category || (category ? category.name : 'Uncategorized');
+  const subCategoryLabel = transferContext?.subCategory || (subCategory ? subCategory.name : '');
+  const memoLabel = transferContext?.memo ?? (transaction.memo || '');
+  const actionsMarkup = transaction.transferId
+    ? `
+      <button type="button" class="icon-button" onclick="manageTransfer('${transaction.transferId}')" aria-label="Manage transfer" title="Manage transfer">
+        ${getActionIcon('edit')}
+      </button>
+    `
+    : `
+      <button type="button" class="icon-button" onclick="editTransaction('${transaction.id}')" aria-label="Edit transaction" title="Edit transaction">
+        ${getActionIcon('edit')}
+      </button>
+      <button type="button" class="icon-button danger" onclick="confirmDeleteTransaction('${transaction.id}')" aria-label="Delete transaction" title="Delete transaction">
+        ${getActionIcon('trash')}
+      </button>
+    `;
 
   return `
-    <div class="transaction-row" data-transaction-id="${transaction.id}">
+    <div class="transaction-row ${transaction.pending ? 'is-pending' : ''}" data-transaction-id="${transaction.id}">
       <div>${escapeHtml(formatDate(transaction.date))}</div>
       <div>${escapeHtml(account ? account.name : 'Unknown account')}</div>
-      <div class="transaction-primary-cell">${escapeHtml(transaction.payee)}</div>
-      <div>${escapeHtml(category ? category.name : 'Uncategorized')}</div>
-      <div>${escapeHtml(subCategory ? subCategory.name : '')}</div>
-      <div class="transaction-muted-cell">${escapeHtml(transaction.memo || '')}</div>
+      <div class="transaction-primary-cell">${escapeHtml(payeeLabel)}</div>
+      <div>${escapeHtml(categoryLabel)}</div>
+      <div>${escapeHtml(subCategoryLabel)}</div>
+      <div class="transaction-muted-cell">${escapeHtml(memoLabel)}</div>
       <div class="amount ${amountClass}">${formatCurrency(transaction.amount)}</div>
-      <div class="amount">${runningBalance}</div>
+      <div class="${transaction.pending ? 'transaction-muted-cell transaction-pending-balance' : 'amount'}">${escapeHtml(runningBalance)}</div>
       <div class="transaction-actions">
-        <button type="button" class="icon-button" onclick="editTransaction('${transaction.id}')" aria-label="Edit transaction" title="Edit transaction">
+        ${actionsMarkup}
+      </div>
+    </div>
+  `;
+}
+
+function buildTransferAccountOptions(accounts, selectedValue) {
+  return buildSelectOptions(accounts, selectedValue, 'Select');
+}
+
+function renderTransferEditorRow({ rowMode, transfer = null, accounts }) {
+  const transferId = transfer?.id || '';
+  const transferDate = transfer?.transferDate || getTodayDateValue();
+  const originAccountId = transfer?.originAccountId || '';
+  const destinationAccountId = transfer?.destinationAccountId || '';
+  const amount = transfer?.amount ?? '';
+  const status = normalizeTransferStatus(transfer?.status);
+  const memo = transfer?.memo || '';
+  const isEditRow = rowMode === 'edit';
+
+  return `
+    <div class="transfer-row transfer-editor-row ${isEditRow ? 'is-editing' : 'is-creating'}" data-row-mode="${rowMode}" data-transfer-id="${transferId}">
+      <div><input type="date" class="txn-input transfer-input" data-field="transferDate" value="${escapeHtml(transferDate)}"></div>
+      <div><select class="txn-input transfer-input" data-field="originAccountId">${buildTransferAccountOptions(accounts, originAccountId)}</select></div>
+      <div><select class="txn-input transfer-input" data-field="destinationAccountId">${buildTransferAccountOptions(accounts, destinationAccountId)}</select></div>
+      <div><input type="number" class="txn-input txn-amount-input transfer-input" data-field="amount" value="${escapeHtml(String(amount))}" step="0.01" min="0.01" placeholder="0.00"></div>
+      <div>
+        <select class="txn-input transfer-input" data-field="status">
+          <option value="scheduled" ${status === 'scheduled' ? 'selected' : ''}>Scheduled</option>
+          <option value="completed" ${status === 'completed' ? 'selected' : ''}>Completed</option>
+        </select>
+      </div>
+      <div><input type="text" class="txn-input transfer-input" data-field="memo" value="${escapeHtml(memo)}" placeholder="Memo"></div>
+      <div class="transaction-actions">
+        <button type="button" class="icon-button" onclick="${isEditRow ? `saveTransferEdit('${transferId}')` : 'createTransfer()'}" aria-label="${isEditRow ? 'Save transfer' : 'Add transfer'}" title="${isEditRow ? 'Save transfer' : 'Add transfer'}">
+          ${getActionIcon('save')}
+        </button>
+        <button type="button" class="icon-button ${isEditRow ? '' : 'ghost'}" onclick="${isEditRow ? 'cancelTransferEdit()' : 'clearTransferDraft()'}" aria-label="${isEditRow ? 'Cancel edit' : 'Clear row'}" title="${isEditRow ? 'Cancel edit' : 'Clear row'}">
+          ${getActionIcon(isEditRow ? 'close' : 'undo')}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderTransferDisplayRow(transfer, accountMap) {
+  const originAccount = accountMap.get(transfer.originAccountId);
+  const destinationAccount = accountMap.get(transfer.destinationAccountId);
+  const normalizedStatus = normalizeTransferStatus(transfer.status);
+
+  return `
+    <div class="transfer-row" data-transfer-id="${transfer.id}">
+      <div>${escapeHtml(formatDate(transfer.transferDate))}</div>
+      <div class="transaction-primary-cell">${escapeHtml(originAccount ? originAccount.name : 'Unknown account')}</div>
+      <div class="transaction-primary-cell">${escapeHtml(destinationAccount ? destinationAccount.name : 'Unknown account')}</div>
+      <div class="amount">${formatCurrency(transfer.amount)}</div>
+      <div><span class="pill ${normalizedStatus === 'completed' ? '' : 'warn'}">${getTransferStatusLabel(normalizedStatus)}</span></div>
+      <div class="transaction-muted-cell">${escapeHtml(transfer.memo || '')}</div>
+      <div class="transaction-actions">
+        <button type="button" class="icon-button" onclick="editTransfer('${transfer.id}')" aria-label="Edit transfer" title="Edit transfer">
           ${getActionIcon('edit')}
         </button>
-        <button type="button" class="icon-button danger" onclick="confirmDeleteTransaction('${transaction.id}')" aria-label="Delete transaction" title="Delete transaction">
+        <button type="button" class="icon-button danger" onclick="confirmDeleteTransfer('${transfer.id}')" aria-label="Delete transfer" title="Delete transfer">
           ${getActionIcon('trash')}
         </button>
       </div>
@@ -2283,6 +2480,15 @@ async function syncTransactionDerivedState(accountIds = null) {
       let runningBalance = Number(account.startingBalance || 0);
 
       accountTransactions.forEach(transaction => {
+        if (transaction.pending) {
+          if (transaction.runningBalance !== null) {
+            transactionUpdates.push(
+              cache.update('transactions', { id: transaction.id }, { $set: { runningBalance: null } })
+            );
+          }
+          return;
+        }
+
         runningBalance += Number(transaction.amount || 0);
 
         if (Number(transaction.runningBalance) !== runningBalance) {
@@ -2322,6 +2528,249 @@ function validateTransactionValues(values) {
   if (!Number.isFinite(values.amount)) {
     throw new Error('Please enter a valid amount.');
   }
+}
+
+function getTransferEditorRow(transferId = '') {
+  const selector = transferId
+    ? `.transfer-editor-row[data-transfer-id="${transferId}"]`
+    : '.transfer-editor-row[data-row-mode="create"]';
+
+  return document.querySelector(selector);
+}
+
+function readTransferRowValues(row) {
+  return {
+    transferDate: row.querySelector('[data-field="transferDate"]').value,
+    originAccountId: row.querySelector('[data-field="originAccountId"]').value,
+    destinationAccountId: row.querySelector('[data-field="destinationAccountId"]').value,
+    amount: parseFloat(row.querySelector('[data-field="amount"]').value),
+    status: normalizeTransferStatus(row.querySelector('[data-field="status"]').value),
+    memo: row.querySelector('[data-field="memo"]').value.trim()
+  };
+}
+
+function validateTransferValues(values) {
+  if (!values.transferDate) {
+    throw new Error('Transfer date is required.');
+  }
+
+  if (!values.originAccountId) {
+    throw new Error('Please choose an origin account.');
+  }
+
+  if (!values.destinationAccountId) {
+    throw new Error('Please choose a destination account.');
+  }
+
+  if (values.originAccountId === values.destinationAccountId) {
+    throw new Error('Origin and destination accounts must be different.');
+  }
+
+  if (!Number.isFinite(values.amount) || Number(values.amount) <= 0) {
+    throw new Error('Please enter a transfer amount greater than zero.');
+  }
+}
+
+function buildTransferRecordPatch(values, overrides = {}) {
+  return {
+    originAccountId: values.originAccountId,
+    destinationAccountId: values.destinationAccountId,
+    amount: Math.abs(Number(values.amount) || 0),
+    transferDate: values.transferDate,
+    status: normalizeTransferStatus(values.status),
+    memo: values.memo || '',
+    ...overrides
+  };
+}
+
+function buildTransferTransactionPatch(transaction) {
+  return {
+    date: transaction.date,
+    accountId: transaction.accountId,
+    payee: transaction.payee,
+    categoryId: null,
+    subCategoryId: null,
+    amount: transaction.amount,
+    memo: transaction.memo,
+    transferId: transaction.transferId || null,
+    pending: transaction.pending === true,
+    cleared: false
+  };
+}
+
+function buildTransferSyncAccountIds(...transfers) {
+  return [...new Set(
+    transfers
+      .flatMap(transfer => transfer ? [transfer.originAccountId, transfer.destinationAccountId] : [])
+      .filter(Boolean)
+  )];
+}
+
+function buildTransferTransactionRecords(transfer, accountMap) {
+  const originAccount = accountMap.get(transfer.originAccountId);
+  const destinationAccount = accountMap.get(transfer.destinationAccountId);
+
+  if (!originAccount || !destinationAccount) {
+    throw new Error('Both transfer accounts must exist before the transfer can be completed.');
+  }
+
+  const { originPayee, destinationPayee } = buildTransferTransactionPayees(originAccount, destinationAccount);
+  const normalizedAmount = Math.abs(Number(transfer.amount || 0));
+  const isPending = normalizeTransferStatus(transfer.status) !== 'completed';
+
+  return {
+    originTransaction: new Transaction(
+      transfer.transferDate,
+      transfer.originAccountId,
+      originPayee,
+      null,
+      null,
+      -normalizedAmount,
+      transfer.memo || '',
+      { transferId: transfer.id, cleared: false, pending: isPending }
+    ),
+    destinationTransaction: new Transaction(
+      transfer.transferDate,
+      transfer.destinationAccountId,
+      destinationPayee,
+      null,
+      null,
+      normalizedAmount,
+      transfer.memo || '',
+      { transferId: transfer.id, cleared: false, pending: isPending }
+    )
+  };
+}
+
+async function removeTransferTransactions(transfer) {
+  if (transfer.originTransactionId) {
+    await cache.remove('transactions', { id: transfer.originTransactionId });
+  }
+
+  if (transfer.destinationTransactionId) {
+    await cache.remove('transactions', { id: transfer.destinationTransactionId });
+  }
+
+  if (editingTransactionId === transfer.originTransactionId || editingTransactionId === transfer.destinationTransactionId) {
+    editingTransactionId = null;
+  }
+}
+
+async function ensureTransferTransactions(nextTransfer, existingTransfer = null) {
+  const accounts = await cache.getAll('accounts');
+  const accountMap = new Map(accounts.map(account => [account.id, account]));
+  const { originTransaction, destinationTransaction } = buildTransferTransactionRecords(nextTransfer, accountMap);
+  const hasExistingPair = Boolean(existingTransfer?.originTransactionId && existingTransfer?.destinationTransactionId);
+
+  if (hasExistingPair) {
+    await cache.update('transactions', { id: existingTransfer.originTransactionId }, { $set: buildTransferTransactionPatch(originTransaction) });
+    await cache.update('transactions', { id: existingTransfer.destinationTransactionId }, { $set: buildTransferTransactionPatch(destinationTransaction) });
+
+    return {
+      originTransactionId: existingTransfer.originTransactionId,
+      destinationTransactionId: existingTransfer.destinationTransactionId
+    };
+  }
+
+  if (existingTransfer) {
+    await removeTransferTransactions(existingTransfer);
+  }
+
+  let savedOriginTransaction = null;
+
+  try {
+    savedOriginTransaction = await cache.insert('transactions', originTransaction);
+    const savedDestinationTransaction = await cache.insert('transactions', destinationTransaction);
+
+    return {
+      originTransactionId: savedOriginTransaction.id,
+      destinationTransactionId: savedDestinationTransaction.id
+    };
+  } catch (error) {
+    if (savedOriginTransaction?.id) {
+      await cache.remove('transactions', { id: savedOriginTransaction.id });
+    }
+
+    throw error;
+  }
+}
+
+async function refreshTransferLinkedViews(accountIds = [], includeBudget = false) {
+  const uniqueAccountIds = [...new Set(accountIds.filter(Boolean))];
+
+  if (uniqueAccountIds.length) {
+    await syncTransactionDerivedState(uniqueAccountIds);
+  }
+
+  await loadAccounts();
+  await refreshDashboard();
+  await loadTransactions();
+  await loadTransfers();
+
+  if (includeBudget && document.getElementById('budget').classList.contains('active') && !budgetDirtyToastActive) {
+    await loadBudgetView();
+  }
+}
+
+async function syncTransferTransactionState() {
+  const [transfers, accounts, transactions] = await Promise.all([
+    cache.getAll('transfers'),
+    cache.getAll('accounts'),
+    cache.getAll('transactions')
+  ]);
+  const accountMap = new Map(accounts.map(account => [account.id, account]));
+
+  for (const transfer of transfers) {
+    const normalizedStatus = normalizeTransferStatus(transfer.status);
+
+    if (!accountMap.has(transfer.originAccountId) || !accountMap.has(transfer.destinationAccountId)) {
+      continue;
+    }
+
+    const existingOriginTransaction = transfer.originTransactionId
+      ? transactions.find(transaction => transaction.id === transfer.originTransactionId)
+      : null;
+    const existingDestinationTransaction = transfer.destinationTransactionId
+      ? transactions.find(transaction => transaction.id === transfer.destinationTransactionId)
+      : null;
+
+    if (existingOriginTransaction && existingDestinationTransaction) {
+      const nextTransfer = {
+        ...transfer,
+        status: normalizedStatus
+      };
+      const { originTransaction, destinationTransaction } = buildTransferTransactionRecords(nextTransfer, accountMap);
+      await cache.update('transactions', { id: existingOriginTransaction.id }, { $set: buildTransferTransactionPatch(originTransaction) });
+      await cache.update('transactions', { id: existingDestinationTransaction.id }, { $set: buildTransferTransactionPatch(destinationTransaction) });
+
+      if (transfer.status !== normalizedStatus) {
+        await cache.update('transfers', { id: transfer.id }, { $set: { status: normalizedStatus } });
+      }
+      continue;
+    }
+
+    if (existingOriginTransaction?.id) {
+      await cache.remove('transactions', { id: existingOriginTransaction.id });
+    }
+
+    if (existingDestinationTransaction?.id) {
+      await cache.remove('transactions', { id: existingDestinationTransaction.id });
+    }
+
+    const nextTransfer = {
+      ...transfer,
+      status: normalizedStatus
+    };
+    const transactionIds = await ensureTransferTransactions(nextTransfer);
+    await cache.update('transfers', { id: transfer.id }, { $set: {
+      status: normalizedStatus,
+      ...transactionIds
+    } });
+  }
+}
+
+function clearTransferDraft() {
+  loadTransfers();
 }
 
 function normalizeImportHeader(header) {
@@ -2563,7 +3012,20 @@ function clearTransactionDraft() {
   loadTransactions();
 }
 
-function editTransaction(transactionId) {
+async function editTransaction(transactionId) {
+  const transactions = await cache.getAll('transactions');
+  const transaction = transactions.find(entry => entry.id === transactionId);
+
+  if (!transaction) {
+    setStatus('Transaction not found.');
+    return;
+  }
+
+  if (transaction.transferId) {
+    await manageTransfer(transaction.transferId);
+    return;
+  }
+
   editingTransactionId = transactionId;
   loadTransactions();
 }
@@ -2617,6 +3079,11 @@ async function confirmDeleteTransaction(transactionId) {
     return;
   }
 
+  if (transaction.transferId) {
+    await manageTransfer(transaction.transferId);
+    return;
+  }
+
   const shouldDelete = await confirmDestructiveAction(
     `Delete transaction "${transaction.payee}"?`,
     'This action cannot be undone.'
@@ -2638,6 +3105,136 @@ async function confirmDeleteTransaction(transactionId) {
   await refreshDashboard();
   await loadTransactions();
   setStatus(`Deleted transaction: ${transaction.payee}`);
+}
+
+async function createTransfer() {
+  try {
+    const row = getTransferEditorRow();
+    const values = readTransferRowValues(row);
+    validateTransferValues(values);
+    const transfer = new Transfer(
+      values.originAccountId,
+      values.destinationAccountId,
+      values.amount,
+      values.transferDate,
+      values.status,
+      values.memo
+    );
+
+    await cache.insert('transfers', transfer);
+    try {
+      const transactionIds = await ensureTransferTransactions(transfer);
+      await cache.update('transfers', { id: transfer.id }, { $set: transactionIds });
+      Object.assign(transfer, transactionIds);
+    } catch (error) {
+      await cache.remove('transfers', { id: transfer.id });
+      throw error;
+    }
+
+    editingTransferId = null;
+    await refreshTransferLinkedViews(buildTransferSyncAccountIds(transfer), transfer.status === 'completed');
+    setStatus(`Saved ${getTransferStatusLabel(transfer.status).toLowerCase()} transfer for ${formatCurrency(transfer.amount)}.`);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+function cancelTransferEdit() {
+  editingTransferId = null;
+  loadTransfers();
+}
+
+async function editTransfer(transferId) {
+  const transfers = await cache.getAll('transfers');
+  const transfer = transfers.find(entry => entry.id === transferId);
+
+  if (!transfer) {
+    setStatus('Transfer not found.');
+    return;
+  }
+
+  editingTransferId = transferId;
+  await loadTransfers();
+  setStatus(`Editing transfer for ${formatCurrency(transfer.amount)}.`);
+}
+
+async function manageTransfer(transferId) {
+  const transfers = await cache.getAll('transfers');
+  const transfer = transfers.find(entry => entry.id === transferId);
+
+  if (!transfer) {
+    setStatus('Transfer not found.');
+    return;
+  }
+
+  editingTransferId = transferId;
+  showSection('transfers');
+  setStatus(`Managing ${getTransferStatusLabel(transfer.status).toLowerCase()} transfer.`);
+}
+
+async function saveTransferEdit(transferId) {
+  try {
+    const transfers = await cache.getAll('transfers');
+    const existingTransfer = transfers.find(entry => entry.id === transferId);
+
+    if (!existingTransfer) {
+      throw new Error('Transfer not found.');
+    }
+
+    const row = getTransferEditorRow(transferId);
+    const values = readTransferRowValues(row);
+    validateTransferValues(values);
+    const nextPatch = buildTransferRecordPatch(values);
+    const nextTransfer = {
+      ...existingTransfer,
+      ...nextPatch
+    };
+    const syncAccountIds = buildTransferSyncAccountIds(existingTransfer, nextTransfer);
+    const transactionIds = await ensureTransferTransactions(nextTransfer, existingTransfer);
+    await cache.update('transfers', { id: transferId }, { $set: {
+      ...nextPatch,
+      ...transactionIds
+    } });
+    editingTransferId = null;
+    await refreshTransferLinkedViews(syncAccountIds, nextTransfer.status === 'completed' || existingTransfer.status === 'completed');
+    setStatus(`Updated ${getTransferStatusLabel(nextTransfer.status).toLowerCase()} transfer for ${formatCurrency(nextTransfer.amount)}.`);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function confirmDeleteTransfer(transferId) {
+  const transfers = await cache.getAll('transfers');
+  const transfer = transfers.find(entry => entry.id === transferId);
+
+  if (!transfer) {
+    setStatus('Transfer not found.');
+    return;
+  }
+
+  const shouldDelete = await confirmDestructiveAction(
+    `Delete ${getTransferStatusLabel(transfer.status).toLowerCase()} transfer?`,
+    'This action cannot be undone.'
+  );
+
+  if (!shouldDelete) {
+    setStatus(`Kept transfer for ${formatCurrency(transfer.amount)}.`);
+    return;
+  }
+
+  const completedTransfer = normalizeTransferStatus(transfer.status) === 'completed';
+  const syncAccountIds = buildTransferSyncAccountIds(transfer);
+  await removeTransferTransactions(transfer);
+
+  await cache.remove('transfers', { id: transferId });
+
+  if (editingTransferId === transferId) {
+    editingTransferId = null;
+  }
+
+  await refreshTransferLinkedViews(syncAccountIds, completedTransfer);
+
+  setStatus(`Deleted transfer for ${formatCurrency(transfer.amount)}.`);
 }
 
 async function confirmDestructiveAction(title, text) {
@@ -2685,9 +3282,10 @@ async function editAccount(accountId) {
 }
 
 async function confirmDeleteAccount(accountId) {
-  const [accounts, transactions] = await Promise.all([
+  const [accounts, transactions, transfers] = await Promise.all([
     cache.getAll('accounts'),
-    cache.getAll('transactions')
+    cache.getAll('transactions'),
+    cache.getAll('transfers')
   ]);
   const account = accounts.find(entry => entry.id === accountId);
 
@@ -2697,9 +3295,10 @@ async function confirmDeleteAccount(accountId) {
   }
 
   const linkedTransactions = transactions.filter(transaction => transaction.accountId === accountId);
+  const linkedTransfers = transfers.filter(transfer => transfer.originAccountId === accountId || transfer.destinationAccountId === accountId);
 
-  if (linkedTransactions.length) {
-    setStatus(`Can't delete ${account.name} while ${linkedTransactions.length} transaction(s) still reference it.`);
+  if (linkedTransactions.length || linkedTransfers.length) {
+    setStatus(`Can't delete ${account.name} while transactions or transfers still reference it.`);
     return;
   }
 
@@ -2722,6 +3321,7 @@ async function confirmDeleteAccount(accountId) {
   await loadAccounts();
   await refreshDashboard();
   await loadTransactions();
+  await loadTransfers();
   setStatus(`Deleted account: ${account.name}`);
 }
 
@@ -2908,9 +3508,17 @@ window.onload = () => {
   window.cancelTransactionEdit = cancelTransactionEdit;
   window.saveTransactionEdit = saveTransactionEdit;
   window.confirmDeleteTransaction = confirmDeleteTransaction;
+  window.createTransfer = createTransfer;
+  window.clearTransferDraft = clearTransferDraft;
+  window.editTransfer = editTransfer;
+  window.cancelTransferEdit = cancelTransferEdit;
+  window.saveTransferEdit = saveTransferEdit;
+  window.confirmDeleteTransfer = confirmDeleteTransfer;
+  window.manageTransfer = manageTransfer;
   document.getElementById('status-pill-close').addEventListener('click', clearStatus);
   budgetState.selectedMonth = getCurrentMonthValue();
-  syncTransactionDerivedState()
+  syncTransferTransactionState()
+    .then(() => syncTransactionDerivedState())
     .then(async () => {
       showSection('accounts');
       await refreshDashboard();
@@ -2942,6 +3550,7 @@ window.onload = () => {
       await loadAccounts();
       await refreshDashboard();
       await loadTransactions();
+      await loadTransfers();
       setStatus(`Updated account: ${name}`);
       resetAccountForm();
       return;
@@ -2953,6 +3562,7 @@ window.onload = () => {
     await loadAccounts();
     await refreshDashboard();
     await loadTransactions();
+    await loadTransfers();
     setStatus(`Saved account: ${name}`);
     resetAccountForm();
   });
