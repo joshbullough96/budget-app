@@ -367,10 +367,6 @@ async function toggleCategoryExpansion(categoryId) {
   await loadCategories();
 }
 
-function syncData() {
-  setStatus('Sync coming soon');
-}
-
 async function loadTransactions() {
   const [transactions, transfers, accounts, categories, subCategories] = await Promise.all([
     cache.getAll('transactions'),
