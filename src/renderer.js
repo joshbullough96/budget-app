@@ -1,5 +1,6 @@
 // renderer.js
 const CacheService = require('./services/CacheService');
+const ProfileService = require('./services/ProfileService');
 const Sortable = require('sortablejs');
 const Swal = require('sweetalert2');
 const Account = require('./models/Account');
@@ -10,6 +11,7 @@ const Transfer = require('./models/Transfer');
 const BudgetAllocation = require('./models/BudgetAllocation');
 
 const cache = new CacheService();
+const profileService = new ProfileService();
 let editingAccountId = null;
 let categoryFormMode = 'create-category';
 let statusToastTimeoutId = null;
@@ -65,6 +67,12 @@ let budgetState = {
 let reportsState = {
   selectedMonth: ''
 };
+let sessionState = {
+  activeUser: null,
+  activeBudget: null
+};
+let authViewMode = 'sign-in';
+let budgetManagerViewMode = 'budget-list';
 const sectionCopy = {
   accounts: {
     title: 'Accounts Overview',
@@ -92,7 +100,334 @@ const sectionCopy = {
   }
 };
 
+function hasActiveBudgetSession() {
+  return Boolean(sessionState.activeUser && sessionState.activeBudget);
+}
+
+function resetWorkspaceState() {
+  editingAccountId = null;
+  categoryFormMode = 'create-category';
+  editingTransactionId = null;
+  editingTransferId = null;
+  accountsSortable = null;
+  categoriesSortable = null;
+  subCategorySortables = [];
+  expandedCategoryIds = new Set();
+  transactionSubCategoriesCache = [];
+  budgetDirtyToastActive = false;
+  transactionTableState = {
+    sortKey: 'date',
+    sortDirection: 'desc',
+    filtersVisible: false,
+    filters: { ...DEFAULT_TRANSACTION_FILTERS }
+  };
+  transferTableState = {
+    sortKey: 'date',
+    sortDirection: 'desc',
+    filtersVisible: false,
+    filters: { ...DEFAULT_TRANSFER_FILTERS }
+  };
+  transactionFilterFocusState = null;
+  transferFilterFocusState = null;
+  budgetState = {
+    selectedMonth: getCurrentMonthValue(),
+    loadedMonth: '',
+    visibleMonths: [],
+    context: null,
+    draftAllocationsByMonth: new Map(),
+    draftMetaByMonth: new Map(),
+    expandedNoteKey: null
+  };
+  reportsState = {
+    selectedMonth: getCurrentMonthValue()
+  };
+}
+
+function updateSessionChrome() {
+  const userName = sessionState.activeUser?.name || 'No user';
+  const budgetName = sessionState.activeBudget?.name || 'No budget selected';
+
+  document.getElementById('session-user-name').textContent = userName;
+  document.getElementById('session-budget-name').textContent = budgetName;
+  document.getElementById('topbar-user-name').textContent = sessionState.activeUser ? `Signed in as ${userName}` : 'Signed out';
+  document.getElementById('topbar-budget-name').textContent = budgetName;
+  document.getElementById('manager-user-name').textContent = userName;
+  document.getElementById('app-user-name').textContent = userName;
+  document.getElementById('manager-user-menu-shell').classList.toggle('hidden', !sessionState.activeUser);
+}
+
+function showShell(shellId) {
+  const shellIds = ['auth-shell', 'manager-shell', 'app-shell'];
+
+  shellIds.forEach(id => {
+    document.getElementById(id).classList.toggle('hidden', id !== shellId);
+  });
+}
+
+function getRelativeDateLabel(value) {
+  if (!value) {
+    return 'Not used yet';
+  }
+
+  return new Date(value).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
+function setAuthViewMode(mode) {
+  authViewMode = mode;
+  const isCreateMode = mode === 'create-user';
+  const isResetMode = mode === 'reset-password';
+  document.getElementById('auth-sign-in-view').classList.toggle('hidden', isCreateMode || isResetMode);
+  document.getElementById('auth-create-user-view').classList.toggle('hidden', !isCreateMode);
+  document.getElementById('auth-reset-password-view').classList.toggle('hidden', !isResetMode);
+
+  if (isCreateMode) {
+    document.getElementById('auth-panel-eyebrow').textContent = 'Create User';
+    document.getElementById('auth-panel-title').textContent = 'Start a new profile';
+    document.getElementById('auth-panel-subtitle').textContent = 'Create a local profile first, then continue into budget management.';
+    return;
+  }
+
+  if (isResetMode) {
+    document.getElementById('auth-panel-eyebrow').textContent = 'Reset Password';
+    document.getElementById('auth-panel-title').textContent = 'Set a new password';
+    document.getElementById('auth-panel-subtitle').textContent = 'Choose an existing user and replace the local password hash with a new one.';
+    return;
+  }
+
+  document.getElementById('auth-panel-eyebrow').textContent = 'Sign In';
+  document.getElementById('auth-panel-title').textContent = 'Choose an existing user';
+  document.getElementById('auth-panel-subtitle').textContent = 'Pick a profile, enter the password, and continue to your budgets.';
+}
+
+function setBudgetManagerViewMode(mode) {
+  budgetManagerViewMode = mode;
+  const isCreateMode = mode === 'create-budget';
+  document.getElementById('budget-list-view').classList.toggle('hidden', isCreateMode);
+  document.getElementById('budget-create-view').classList.toggle('hidden', !isCreateMode);
+  document.getElementById('budget-panel-eyebrow').textContent = isCreateMode ? 'Create Budget' : 'Budgets';
+  document.getElementById('budget-panel-title').textContent = isCreateMode ? 'Start a new budget' : 'Your available budgets';
+  document.getElementById('budget-panel-subtitle').textContent = isCreateMode
+    ? 'A new budget gets its own local database files under this signed-in user.'
+    : 'Pick one to open the full budgeting workspace.';
+}
+
+function resetPasswordVisibility() {
+  document.querySelectorAll('.password-toggle').forEach(button => {
+    const input = document.getElementById(button.dataset.passwordTarget);
+
+    if (!input) {
+      return;
+    }
+
+    input.type = 'password';
+    button.textContent = 'Show';
+    button.setAttribute('aria-label', 'Show password');
+    button.setAttribute('aria-pressed', 'false');
+  });
+}
+
+function clearAuthPasswordFields() {
+  [
+    'sign-in-password',
+    'create-user-password',
+    'create-user-confirm-password',
+    'reset-password-current',
+    'reset-password-value',
+    'reset-password-confirm'
+  ].forEach(fieldId => {
+    const field = document.getElementById(fieldId);
+
+    if (field) {
+      field.value = '';
+      field.type = 'password';
+    }
+  });
+
+  resetPasswordVisibility();
+}
+
+function renderUserList() {
+  const users = profileService.getUsers();
+  const userList = document.getElementById('user-list');
+  const selectedUserId = document.getElementById('sign-in-user-id').value || document.getElementById('reset-password-user-id').value;
+
+  if (!users.length) {
+    userList.innerHTML = `
+      <div class="launch-list-empty">
+        <h4>No users yet</h4>
+        <p>Create your first profile on the right to get started.</p>
+      </div>
+    `;
+    populateUserSelects(users);
+    return;
+  }
+
+  populateUserSelects(users);
+  userList.innerHTML = users.map(user => `
+    <button
+      type="button"
+      class="launch-list-button ${user.id === selectedUserId ? 'is-selected' : ''}"
+      data-user-id="${user.id}"
+    >
+      <strong>${escapeHtml(user.name)}</strong>
+      <p>Last signed in ${escapeHtml(getRelativeDateLabel(user.lastSignedInAt))}</p>
+    </button>
+  `).join('');
+}
+
+function populateUserSelects(users) {
+  const signInSelect = document.getElementById('sign-in-user-id');
+  const resetSelect = document.getElementById('reset-password-user-id');
+  const signInValue = signInSelect.value;
+  const resetValue = resetSelect.value;
+  const optionsMarkup = ['<option value="">Choose a user</option>'].concat(
+    users.map(user => `<option value="${user.id}">${escapeHtml(user.name)}</option>`)
+  ).join('');
+
+  signInSelect.innerHTML = optionsMarkup;
+  resetSelect.innerHTML = optionsMarkup;
+  signInSelect.value = users.some(user => user.id === signInValue) ? signInValue : '';
+  resetSelect.value = users.some(user => user.id === resetValue) ? resetValue : '';
+}
+
+function selectSignInUser(userId) {
+  const user = profileService.getUser(userId);
+
+  if (!user) {
+    return;
+  }
+
+  document.getElementById('sign-in-user-id').value = user.id;
+  document.getElementById('reset-password-user-id').value = user.id;
+  renderUserList();
+}
+
+function showAuthShell() {
+  sessionState.activeUser = null;
+  sessionState.activeBudget = null;
+  cache.clearBudgetContext();
+  clearStatus();
+  updateSessionChrome();
+  document.getElementById('sign-in-form').reset();
+  document.getElementById('create-user-form').reset();
+  document.getElementById('reset-password-form').reset();
+  document.getElementById('sign-in-user-id').value = '';
+  document.getElementById('reset-password-user-id').value = '';
+  clearAuthPasswordFields();
+  setAuthViewMode('sign-in');
+  renderUserList();
+  showShell('auth-shell');
+}
+
+function renderBudgetList() {
+  const budgetList = document.getElementById('budget-list');
+
+  if (!sessionState.activeUser) {
+    budgetList.innerHTML = '';
+    return;
+  }
+
+  const budgets = profileService.getBudgets(sessionState.activeUser.id);
+  const selectedBudgetId = sessionState.activeBudget?.id || '';
+
+  if (!budgets.length) {
+    budgetList.innerHTML = `
+      <div class="launch-list-empty">
+        <h4>No budgets yet</h4>
+        <p>Create your first budget on the right, then open it here.</p>
+      </div>
+    `;
+    return;
+  }
+
+  budgetList.innerHTML = budgets.map(budget => `
+    <button
+      type="button"
+      class="launch-list-button ${budget.id === selectedBudgetId ? 'is-selected' : ''}"
+      data-budget-id="${budget.id}"
+    >
+      <strong>${escapeHtml(budget.name)}</strong>
+      <p>Last opened ${escapeHtml(getRelativeDateLabel(budget.lastOpenedAt))}</p>
+    </button>
+  `).join('');
+}
+
+function showManagerShell(user) {
+  sessionState.activeUser = user;
+  sessionState.activeBudget = null;
+  cache.clearBudgetContext();
+  clearStatus();
+  updateSessionChrome();
+  document.getElementById('create-budget-form').reset();
+  setBudgetManagerViewMode('budget-list');
+  renderBudgetList();
+  showShell('manager-shell');
+}
+
+async function switchBudgets() {
+  if (!sessionState.activeUser) {
+    return;
+  }
+
+  resetWorkspaceState();
+  resetDashboardDisplay();
+  showManagerShell(sessionState.activeUser);
+  setStatus('Choose another budget.');
+}
+
+function resetDashboardDisplay() {
+  document.getElementById('total-cash').textContent = formatCurrency(0);
+  document.getElementById('account-count').textContent = '0';
+  document.getElementById('category-count').textContent = '0';
+  document.getElementById('category-summary').textContent = '0 subcategories ready for assignment.';
+}
+
+async function openBudget(user, budget) {
+  resetWorkspaceState();
+  cache.setBudgetContext(user.id, budget.id);
+  const openedBudget = profileService.markBudgetOpened(user.id, budget.id);
+  sessionState.activeUser = user;
+  sessionState.activeBudget = openedBudget;
+  updateSessionChrome();
+  showShell('app-shell');
+  await syncTransferTransactionState();
+  await syncTransactionDerivedState();
+  showSection('accounts');
+  await refreshDashboard();
+  setStatus(`Opened budget: ${openedBudget.name}`);
+}
+
+async function handleBudgetSelection(budgetId) {
+  if (!sessionState.activeUser) {
+    return;
+  }
+
+  const budget = profileService.getBudget(sessionState.activeUser.id, budgetId);
+
+  if (!budget) {
+    setStatus('That budget could not be found.');
+    return;
+  }
+
+  await openBudget(sessionState.activeUser, budget);
+}
+
+async function signOut() {
+  resetWorkspaceState();
+  resetDashboardDisplay();
+  showAuthShell();
+  setStatus('Signed out.');
+}
+
 function showSection(sectionId) {
+  if (!hasActiveBudgetSession()) {
+    return;
+  }
+
   document.querySelectorAll('.section').forEach(section => {
     section.classList.remove('active');
   });
@@ -105,6 +440,10 @@ function showSection(sectionId) {
 }
 
 async function loadSectionData(sectionId) {
+  if (!hasActiveBudgetSession()) {
+    return;
+  }
+
   switch (sectionId) {
     case 'accounts':
       await loadAccounts();
@@ -125,6 +464,86 @@ async function loadSectionData(sectionId) {
       await loadReports();
       break;
   }
+}
+
+async function handleCreateUser(event) {
+  event.preventDefault();
+  const name = document.getElementById('create-user-name').value;
+  const password = document.getElementById('create-user-password').value;
+  const confirmPassword = document.getElementById('create-user-confirm-password').value;
+
+  if (password !== confirmPassword) {
+    setStatus('The passwords did not match.');
+    return;
+  }
+
+  const user = profileService.createUser(name, password);
+  document.getElementById('create-user-form').reset();
+  renderUserList();
+  selectSignInUser(user.id);
+  setStatus(`Created user: ${user.name}`);
+}
+
+async function handleSignIn(event) {
+  event.preventDefault();
+  const userId = document.getElementById('sign-in-user-id').value;
+  const password = document.getElementById('sign-in-password').value;
+
+  if (!userId) {
+    setStatus('Choose a user before signing in.');
+    return;
+  }
+
+  const user = profileService.signIn(userId, password);
+  document.getElementById('sign-in-form').reset();
+  document.getElementById('sign-in-user-id').value = user.id;
+  document.getElementById('reset-password-user-id').value = user.id;
+  clearAuthPasswordFields();
+  renderUserList();
+  showManagerShell(user);
+  setStatus(`Signed in as ${user.name}.`);
+}
+
+async function handleCreateBudget(event) {
+  event.preventDefault();
+
+  if (!sessionState.activeUser) {
+    setStatus('Sign in before creating a budget.');
+    return;
+  }
+
+  const name = document.getElementById('create-budget-name').value;
+  const budget = profileService.createBudget(sessionState.activeUser.id, name);
+  document.getElementById('create-budget-form').reset();
+  renderBudgetList();
+  await openBudget(sessionState.activeUser, budget);
+}
+
+async function handleResetPassword(event) {
+  event.preventDefault();
+  const userId = document.getElementById('reset-password-user-id').value;
+  const currentPassword = document.getElementById('reset-password-current').value;
+  const nextPassword = document.getElementById('reset-password-value').value;
+  const confirmPassword = document.getElementById('reset-password-confirm').value;
+  const userName = profileService.getUser(userId)?.name || '';
+
+  if (!userId) {
+    setStatus('Choose a user before resetting the password.');
+    return;
+  }
+
+  if (nextPassword !== confirmPassword) {
+    setStatus('The new passwords did not match.');
+    return;
+  }
+
+  profileService.verifyCurrentPassword(userId, currentPassword);
+  profileService.resetPassword(userId, nextPassword);
+  document.getElementById('reset-password-form').reset();
+  document.getElementById('reset-password-user-id').value = userId;
+  clearAuthPasswordFields();
+  setAuthViewMode('sign-in');
+  setStatus(`Password reset for ${userName}.`);
 }
 
 async function loadAccountsLegacy() {
@@ -4129,18 +4548,127 @@ window.onload = () => {
   window.confirmDeleteTransfer = confirmDeleteTransfer;
   window.manageTransfer = manageTransfer;
   document.getElementById('status-pill-close').addEventListener('click', clearStatus);
-  budgetState.selectedMonth = getCurrentMonthValue();
-  syncTransferTransactionState()
-    .then(() => syncTransactionDerivedState())
-    .then(async () => {
-      showSection('accounts');
-      await refreshDashboard();
-    })
-    .catch(error => {
+  resetWorkspaceState();
+  resetDashboardDisplay();
+  updateSessionChrome();
+  document.getElementById('create-user-form').addEventListener('submit', async (event) => {
+    try {
+      await handleCreateUser(event);
+    } catch (error) {
       setStatus(error.message);
-      showSection('accounts');
-      refreshDashboard();
+    }
+  });
+  document.getElementById('sign-in-form').addEventListener('submit', async (event) => {
+    try {
+      await handleSignIn(event);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+  document.getElementById('create-budget-form').addEventListener('submit', async (event) => {
+    try {
+      await handleCreateBudget(event);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+  document.getElementById('reset-password-form').addEventListener('submit', async (event) => {
+    try {
+      await handleResetPassword(event);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+  document.getElementById('user-list').addEventListener('click', event => {
+    const userButton = event.target.closest('[data-user-id]');
+
+    if (!userButton) {
+      return;
+    }
+
+    selectSignInUser(userButton.dataset.userId);
+  });
+  document.getElementById('sign-in-user-id').addEventListener('change', event => {
+    document.getElementById('reset-password-user-id').value = event.target.value;
+    renderUserList();
+  });
+  document.getElementById('reset-password-user-id').addEventListener('change', event => {
+    document.getElementById('sign-in-user-id').value = event.target.value;
+    renderUserList();
+  });
+  document.getElementById('budget-list').addEventListener('click', async event => {
+    const budgetButton = event.target.closest('[data-budget-id]');
+
+    if (!budgetButton) {
+      return;
+    }
+
+    try {
+      await handleBudgetSelection(budgetButton.dataset.budgetId);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+  document.getElementById('show-create-user').addEventListener('click', () => {
+    setAuthViewMode('create-user');
+    document.getElementById('create-user-name').focus();
+  });
+  document.getElementById('show-reset-password').addEventListener('click', () => {
+    setAuthViewMode('reset-password');
+    document.getElementById('reset-password-current').focus();
+  });
+  document.getElementById('show-sign-in').addEventListener('click', () => {
+    setAuthViewMode('sign-in');
+    document.getElementById('sign-in-password').focus();
+  });
+  document.getElementById('show-sign-in-from-reset').addEventListener('click', () => {
+    setAuthViewMode('sign-in');
+    document.getElementById('sign-in-password').focus();
+  });
+  document.getElementById('show-create-budget').addEventListener('click', () => {
+    setBudgetManagerViewMode('create-budget');
+    document.getElementById('create-budget-name').focus();
+  });
+  document.getElementById('show-budget-list').addEventListener('click', () => {
+    setBudgetManagerViewMode('budget-list');
+  });
+  document.getElementById('manager-switch-budget').addEventListener('click', async () => {
+    await switchBudgets();
+  });
+  document.getElementById('app-switch-budget').addEventListener('click', async () => {
+    await switchBudgets();
+  });
+  document.getElementById('manager-sign-out').addEventListener('click', async () => {
+    await signOut();
+  });
+  document.getElementById('app-sign-out').addEventListener('click', async () => {
+    await signOut();
+  });
+  document.addEventListener('click', event => {
+    document.querySelectorAll('.user-menu[open]').forEach(menu => {
+      if (!menu.contains(event.target)) {
+        menu.removeAttribute('open');
+      }
     });
+
+    const toggleButton = event.target.closest('.password-toggle');
+
+    if (!toggleButton) {
+      return;
+    }
+
+    const input = document.getElementById(toggleButton.dataset.passwordTarget);
+
+    if (!input) {
+      return;
+    }
+
+    const isVisible = input.type === 'text';
+    input.type = isVisible ? 'password' : 'text';
+    toggleButton.textContent = isVisible ? 'Show' : 'Hide';
+    toggleButton.setAttribute('aria-label', isVisible ? 'Show password' : 'Hide password');
+    toggleButton.setAttribute('aria-pressed', isVisible ? 'false' : 'true');
+  });
   document.getElementById('account-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = document.getElementById('acc-id').value;
@@ -4527,4 +5055,5 @@ window.onload = () => {
       );
     }
   });
+  showAuthShell();
 };

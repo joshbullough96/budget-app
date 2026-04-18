@@ -7,7 +7,171 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="app-shell">
+  <div id="auth-shell" class="launch-shell">
+    <div class="launch-card launch-card-wide">
+      <div class="launch-brand-wrap">
+        <p class="eyebrow">Zero-Based Budget</p>
+        <div class="launch-brand">
+          <div class="brand-mark">$</div>
+          <div>
+            <h1>Budget App</h1>
+          </div>
+        </div>
+      </div>
+      <div class="launch-shell-copy">
+        <h2>Sign in or create your budgeting profile</h2>
+        <p class="section-subtitle">Profiles stay local to this app, and passwords are stored as salted hashes instead of plain text.</p>
+      </div>
+    </div>
+    <div class="launch-grid auth-launch-grid">
+      <section class="launch-card auth-card">
+        <div class="panel-heading">
+          <p id="auth-panel-eyebrow" class="eyebrow">Sign In</p>
+          <h3 id="auth-panel-title">Choose an existing user</h3>
+          <p id="auth-panel-subtitle" class="panel-hint">Pick a profile, enter the password, and continue to your budgets.</p>
+        </div>
+        <div id="auth-sign-in-view">
+          <div id="user-list" class="launch-list"></div>
+          <form id="sign-in-form" class="stack-form launch-form">
+            <label>
+              <span>Selected User</span>
+              <select id="sign-in-user-id" required>
+                <option value="">Choose a user</option>
+              </select>
+            </label>
+            <label>
+              <span>Password</span>
+              <div class="password-field">
+                <input type="password" id="sign-in-password" placeholder="Enter your password" required>
+                <button type="button" class="password-toggle" data-password-target="sign-in-password" aria-label="Show password" aria-pressed="false">Show</button>
+              </div>
+            </label>
+            <div class="button-row">
+              <button type="submit" class="primary-button">Sign In</button>
+            </div>
+          </form>
+          <div class="auth-link-stack">
+            <button type="button" id="show-reset-password" class="text-link-button auth-toggle-button">Reset password</button>
+            <button type="button" id="show-create-user" class="text-link-button auth-toggle-button">Or create a profile</button>
+          </div>
+        </div>
+
+        <div id="auth-create-user-view" class="hidden">
+          <form id="create-user-form" class="stack-form launch-form">
+            <label>
+              <span>Name</span>
+              <input type="text" id="create-user-name" placeholder="Jane Doe" required>
+            </label>
+            <label>
+              <span>Password</span>
+              <div class="password-field">
+                <input type="password" id="create-user-password" placeholder="At least 8 characters" required>
+                <button type="button" class="password-toggle" data-password-target="create-user-password" aria-label="Show password" aria-pressed="false">Show</button>
+              </div>
+            </label>
+            <label>
+              <span>Confirm Password</span>
+              <div class="password-field">
+                <input type="password" id="create-user-confirm-password" placeholder="Re-enter the password" required>
+                <button type="button" class="password-toggle" data-password-target="create-user-confirm-password" aria-label="Show password" aria-pressed="false">Show</button>
+              </div>
+            </label>
+            <div class="button-row">
+              <button type="submit" class="primary-button">Create User</button>
+            </div>
+          </form>
+          <button type="button" id="show-sign-in" class="text-link-button auth-toggle-button">Back to sign in</button>
+        </div>
+
+        <div id="auth-reset-password-view" class="hidden">
+          <form id="reset-password-form" class="stack-form launch-form">
+            <label>
+              <span>Selected User</span>
+              <select id="reset-password-user-id" required>
+                <option value="">Choose a user</option>
+              </select>
+            </label>
+            <label>
+              <span>Current Password</span>
+              <div class="password-field">
+                <input type="password" id="reset-password-current" placeholder="Enter the current password" required>
+                <button type="button" class="password-toggle" data-password-target="reset-password-current" aria-label="Show password" aria-pressed="false">Show</button>
+              </div>
+            </label>
+            <label>
+              <span>New Password</span>
+              <div class="password-field">
+                <input type="password" id="reset-password-value" placeholder="At least 8 characters" required>
+                <button type="button" class="password-toggle" data-password-target="reset-password-value" aria-label="Show password" aria-pressed="false">Show</button>
+              </div>
+            </label>
+            <label>
+              <span>Confirm New Password</span>
+              <div class="password-field">
+                <input type="password" id="reset-password-confirm" placeholder="Re-enter the new password" required>
+                <button type="button" class="password-toggle" data-password-target="reset-password-confirm" aria-label="Show password" aria-pressed="false">Show</button>
+              </div>
+            </label>
+            <div class="button-row">
+              <button type="submit" class="primary-button">Save New Password</button>
+            </div>
+          </form>
+          <button type="button" id="show-sign-in-from-reset" class="text-link-button auth-toggle-button">Back to sign in</button>
+        </div>
+
+        <p class="launch-disclaimer">Avoid saving sensitive information in notes or other saved fields. This app is meant for budgeting details, not private secrets or regulated data.</p>
+      </section>
+    </div>
+  </div>
+
+  <div id="manager-shell" class="launch-shell hidden">
+    <div id="manager-user-menu-shell" class="shell-user-menu-shell hidden">
+      <details class="user-menu">
+        <summary class="user-menu-trigger">
+          <span aria-hidden="true">
+            <svg viewBox="0 0 24 24" role="presentation" focusable="false">
+              <path d="M12 12.4a4.2 4.2 0 1 0-4.2-4.2 4.2 4.2 0 0 0 4.2 4.2Zm0 1.8c-4.23 0-7.7 2.24-7.7 5v.8a1 1 0 0 0 1 1h13.4a1 1 0 0 0 1-1v-.8c0-2.76-3.47-5-7.7-5Z"></path>
+            </svg>
+          </span>
+        </summary>
+        <div class="user-menu-panel">
+          <p id="manager-user-name" class="user-menu-name">User</p>
+          <button type="button" id="manager-switch-budget" class="user-menu-action">Switch Budget</button>
+          <button type="button" id="manager-sign-out" class="user-menu-action">Sign Out</button>
+        </div>
+      </details>
+    </div>
+    <div class="launch-grid auth-launch-grid">
+      <section class="launch-card auth-card">
+        <div class="panel-heading">
+          <p id="budget-panel-eyebrow" class="eyebrow">Budgets</p>
+          <h3 id="budget-panel-title">Your available budgets</h3>
+          <p id="budget-panel-subtitle" class="panel-hint">Pick one to open the full budgeting workspace.</p>
+        </div>
+        <div id="budget-list-view">
+          <div id="budget-list" class="launch-list"></div>
+          <button type="button" id="show-create-budget" class="text-link-button auth-toggle-button">Or start a new budget</button>
+        </div>
+
+        <div id="budget-create-view" class="hidden">
+          <form id="create-budget-form" class="stack-form launch-form">
+            <label>
+              <span>Budget Name</span>
+              <input type="text" id="create-budget-name" placeholder="Family Budget, Personal Budget..." required>
+            </label>
+            <div class="button-row">
+              <button type="submit" class="primary-button">Create Budget</button>
+            </div>
+          </form>
+          <button type="button" id="show-budget-list" class="text-link-button auth-toggle-button">Back to budgets</button>
+        </div>
+
+        <p class="launch-disclaimer">Avoid saving sensitive information in notes or other saved fields. Keep this budget focused on planning and transaction details only.</p>
+      </section>
+    </div>
+  </div>
+
+  <div id="app-shell" class="app-shell hidden">
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">$</div>
@@ -15,6 +179,12 @@
           <p class="eyebrow">Zero-Based Budget</p>
           <h1>Budget App</h1>
         </div>
+      </div>
+
+      <div class="sidebar-session">
+        <p class="sidebar-card-label">Signed In</p>
+        <strong id="session-user-name">No user</strong>
+        <p id="session-budget-name">No budget selected</p>
       </div>
 
       <nav class="sidebar-nav">
@@ -58,11 +228,26 @@
           <h2 id="section-title">Accounts Overview</h2>
           <p id="section-subtitle" class="section-subtitle">Track the cash you have available right now.</p>
         </div>
-        <div id="status-pill" class="status-pill" aria-live="polite" aria-atomic="true">
-          <span id="status-pill-message" class="status-pill-message"></span>
-          <button type="button" id="status-pill-close" class="status-pill-close" aria-label="Dismiss notification" title="Dismiss notification">
-            &times;
-          </button>
+        <div class="topbar-session">
+          <div class="topbar-session-copy">
+            <p class="eyebrow">Active Budget</p>
+            <strong id="topbar-budget-name">No budget selected</strong>
+            <p id="topbar-user-name" class="panel-hint subtle">Signed out</p>
+          </div>
+          <details class="user-menu topbar-user-menu">
+            <summary class="user-menu-trigger">
+              <span aria-hidden="true">
+                <svg viewBox="0 0 24 24" role="presentation" focusable="false">
+                  <path d="M12 12.4a4.2 4.2 0 1 0-4.2-4.2 4.2 4.2 0 0 0 4.2 4.2Zm0 1.8c-4.23 0-7.7 2.24-7.7 5v.8a1 1 0 0 0 1 1h13.4a1 1 0 0 0 1-1v-.8c0-2.76-3.47-5-7.7-5Z"></path>
+                </svg>
+              </span>
+            </summary>
+            <div class="user-menu-panel">
+              <p id="app-user-name" class="user-menu-name">User</p>
+              <button type="button" id="app-switch-budget" class="user-menu-action">Switch Budget</button>
+              <button type="button" id="app-sign-out" class="user-menu-action">Sign Out</button>
+            </div>
+          </details>
         </div>
         </header>
 
@@ -319,6 +504,13 @@
           </section>
         </div>
     </main>
+  </div>
+
+  <div id="status-pill" class="status-pill" aria-live="polite" aria-atomic="true">
+    <span id="status-pill-message" class="status-pill-message"></span>
+    <button type="button" id="status-pill-close" class="status-pill-close" aria-label="Dismiss notification" title="Dismiss notification">
+      &times;
+    </button>
   </div>
 
   <script src="renderer.js"></script>
