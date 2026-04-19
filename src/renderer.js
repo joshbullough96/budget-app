@@ -396,14 +396,36 @@ function renderBudgetList() {
   }
 
   budgetList.innerHTML = budgets.map(budget => `
-    <button
-      type="button"
-      class="launch-list-button ${budget.id === selectedBudgetId ? 'is-selected' : ''}"
-      data-budget-id="${budget.id}"
-    >
-      <strong>${escapeHtml(budget.name)}</strong>
-      <p>Last opened ${escapeHtml(getRelativeDateLabel(budget.lastOpenedAt))}</p>
-    </button>
+    <div class="budget-list-item ${budget.id === selectedBudgetId ? 'is-selected' : ''}">
+      <button
+        type="button"
+        class="launch-list-button budget-list-open-button ${budget.id === selectedBudgetId ? 'is-selected' : ''}"
+        data-budget-id="${budget.id}"
+      >
+        <strong>${escapeHtml(budget.name)}</strong>
+        <p>Last opened ${escapeHtml(getRelativeDateLabel(budget.lastOpenedAt))}</p>
+      </button>
+      <div class="budget-list-actions">
+        <button
+          type="button"
+          class="icon-button"
+          data-rename-budget-id="${budget.id}"
+          aria-label="Rename budget"
+          title="Rename budget"
+        >
+          ${getActionIcon('edit')}
+        </button>
+        <button
+          type="button"
+          class="icon-button danger"
+          data-delete-budget-id="${budget.id}"
+          aria-label="Delete budget"
+          title="Delete budget"
+        >
+          ${getActionIcon('trash')}
+        </button>
+      </div>
+    </div>
   `).join('');
 }
 
@@ -465,6 +487,107 @@ async function handleBudgetSelection(budgetId) {
   }
 
   await openBudget(sessionState.activeUser, budget);
+}
+
+async function promptRenameBudget(budgetId) {
+  if (!sessionState.activeUser) {
+    return;
+  }
+
+  const budget = profileService.getBudget(sessionState.activeUser.id, budgetId);
+
+  if (!budget) {
+    setStatus('That budget could not be found.');
+    return;
+  }
+
+  const result = await Swal.fire({
+    title: `Rename "${budget.name}"?`,
+    input: 'text',
+    inputValue: budget.name,
+    inputLabel: 'Budget name',
+    inputPlaceholder: 'Family Budget',
+    showCancelButton: true,
+    confirmButtonText: 'Save',
+    confirmButtonColor: '#1e7f74',
+    cancelButtonText: 'Cancel',
+    background: '#fffdf8',
+    preConfirm: (value) => {
+      const normalizedValue = String(value || '').trim();
+
+      if (!normalizedValue) {
+        Swal.showValidationMessage('Enter a name for the budget.');
+      }
+
+      return normalizedValue;
+    }
+  });
+
+  if (!result.isConfirmed) {
+    setStatus(`Kept budget name: ${budget.name}`);
+    return;
+  }
+
+  const renamedBudget = profileService.renameBudget(sessionState.activeUser.id, budgetId, result.value);
+
+  if (sessionState.activeBudget?.id === budgetId) {
+    sessionState.activeBudget = renamedBudget;
+    updateSessionChrome();
+  }
+
+  renderBudgetList();
+  setStatus(`Renamed budget to ${renamedBudget.name}.`);
+}
+
+async function confirmDeleteBudget(budgetId) {
+  if (!sessionState.activeUser) {
+    return;
+  }
+
+  const budget = profileService.getBudget(sessionState.activeUser.id, budgetId);
+
+  if (!budget) {
+    setStatus('That budget could not be found.');
+    return;
+  }
+
+  const result = await Swal.fire({
+    title: `Delete budget "${budget.name}"?`,
+    html: `
+      <p>Are you sure you want to delete this budget? This action cannot be undone.</p>
+      <p>Type <strong>delete</strong> below to confirm.</p>
+    `,
+    input: 'text',
+    inputPlaceholder: 'delete',
+    showCancelButton: true,
+    confirmButtonText: 'Delete Budget',
+    confirmButtonColor: '#af5d39',
+    cancelButtonText: 'Cancel',
+    background: '#fffdf8',
+    focusCancel: true,
+    preConfirm: (value) => {
+      if (String(value || '').trim().toLowerCase() !== 'delete') {
+        Swal.showValidationMessage('Type "delete" to confirm this action.');
+      }
+
+      return value;
+    }
+  });
+
+  if (!result.isConfirmed) {
+    setStatus(`Kept budget: ${budget.name}`);
+    return;
+  }
+
+  profileService.deleteBudget(sessionState.activeUser.id, budgetId);
+
+  if (sessionState.activeBudget?.id === budgetId) {
+    sessionState.activeBudget = null;
+    updateSessionChrome();
+  }
+
+  renderBudgetList();
+  setStatus(`Deleted budget: ${budget.name}`);
 }
 
 async function signOut() {
@@ -4873,7 +4996,27 @@ window.onload = () => {
     renderUserList();
   });
   document.getElementById('budget-list').addEventListener('click', async event => {
+    const renameButton = event.target.closest('[data-rename-budget-id]');
+    const deleteButton = event.target.closest('[data-delete-budget-id]');
     const budgetButton = event.target.closest('[data-budget-id]');
+
+    if (renameButton) {
+      try {
+        await promptRenameBudget(renameButton.dataset.renameBudgetId);
+      } catch (error) {
+        setStatus(error.message);
+      }
+      return;
+    }
+
+    if (deleteButton) {
+      try {
+        await confirmDeleteBudget(deleteButton.dataset.deleteBudgetId);
+      } catch (error) {
+        setStatus(error.message);
+      }
+      return;
+    }
 
     if (!budgetButton) {
       return;

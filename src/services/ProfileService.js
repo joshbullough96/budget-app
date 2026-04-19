@@ -370,6 +370,47 @@ class ProfileService {
     return this.sanitizeBudget(budget);
   }
 
+  renameBudget(userId, budgetId, name) {
+    const normalizedName = this.normalizeName(name);
+    const budgetPath = this.getBudgetMetaPath(userId, budgetId);
+    const budget = this.readJson(budgetPath);
+
+    if (!budget) {
+      throw new Error('That budget could not be found.');
+    }
+
+    if (!normalizedName) {
+      throw new Error('Enter a name for the budget.');
+    }
+
+    const existingBudgets = this.getBudgets(userId);
+
+    if (existingBudgets.some(entry => entry.id !== budgetId && entry.name.toLowerCase() === normalizedName.toLowerCase())) {
+      throw new Error(`A budget named "${normalizedName}" already exists.`);
+    }
+
+    budget.name = normalizedName;
+    budget.updatedAt = new Date().toISOString();
+    this.writeJson(budgetPath, budget);
+
+    return this.sanitizeBudget(budget);
+  }
+
+  deleteBudget(userId, budgetId) {
+    const budgetDirectory = this.getBudgetDirectory(userId, budgetId);
+    const budget = this.readJson(this.getBudgetMetaPath(userId, budgetId));
+
+    if (!budget) {
+      throw new Error('That budget could not be found.');
+    }
+
+    if (fs.existsSync(budgetDirectory)) {
+      fs.rmSync(budgetDirectory, { recursive: true, force: true });
+    }
+
+    return this.sanitizeBudget(budget);
+  }
+
   markBudgetOpened(userId, budgetId) {
     const budgetPath = this.getBudgetMetaPath(userId, budgetId);
     const budget = this.readJson(budgetPath);
