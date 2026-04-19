@@ -2473,8 +2473,8 @@ function getTableSortIndicator(tableState, sortKey) {
   }
 
   return tableState.sortDirection === 'asc'
-    ? ' <span class="transaction-sort-indicator" aria-hidden="true">&#8593;</span>'
-    : ' <span class="transaction-sort-indicator" aria-hidden="true">&#8595;</span>';
+    ? ' <span class="transaction-sort-indicator" aria-hidden="true">&#9652;</span>'
+    : ' <span class="transaction-sort-indicator" aria-hidden="true">&#9662;</span>';
 }
 
 function getActiveFilterCount(filters) {

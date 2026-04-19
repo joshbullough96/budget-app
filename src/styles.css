@@ -1565,7 +1565,7 @@ textarea {
   grid-template-columns: 150px 140px minmax(160px, 1.2fr) 150px 150px minmax(150px, 1fr) 120px 130px 120px;
   gap: 0.5rem;
   align-items: center;
-  padding: 0.56rem 0.72rem;
+  padding: 0.40rem 0.72rem;
   border-top: 1px solid rgba(22, 51, 49, 0.08);
 }
 
@@ -1574,13 +1574,19 @@ textarea {
   grid-template-columns: 140px 170px 170px 120px 130px minmax(180px, 1fr) 120px;
   gap: 0.5rem;
   align-items: center;
-  padding: 0.56rem 0.72rem;
+  padding: 0.40rem 0.72rem;
   border-top: 1px solid rgba(22, 51, 49, 0.08);
 }
 
 .transaction-row > div,
 .transfer-row > div {
   min-width: 0;
+}
+
+.transfer-row .pill {
+  min-height: 1.72rem;
+  padding: 0.24rem 0.68rem;
+  font-size: 0.8rem;
 }
 
 .transaction-head,
@@ -2124,11 +2130,11 @@ select.txn-input {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
   padding: 0;
   border: 1px solid rgba(22, 51, 49, 0.1);
-  border-radius: 14px;
+  border-radius: 8px;
   background: rgba(22, 51, 49, 0.06);
   color: var(--text);
   cursor: pointer;
