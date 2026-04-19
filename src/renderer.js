@@ -2458,6 +2458,34 @@ function formatDate(value) {
   });
 }
 
+function getDateFilterCandidates(value) {
+  const parsed = parseDateValue(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return [value];
+  }
+
+  const month = parsed.getMonth() + 1;
+  const day = parsed.getDate();
+  const year = parsed.getFullYear();
+  const shortYear = String(year).slice(-2);
+  const monthPadded = padDatePart(month);
+  const dayPadded = padDatePart(day);
+
+  return Array.from(new Set([
+    String(value || ''),
+    formatDate(value),
+    `${month}/${day}/${year}`,
+    `${month}/${day}/${shortYear}`,
+    `${monthPadded}/${dayPadded}/${year}`,
+    `${monthPadded}/${dayPadded}/${shortYear}`,
+    `${month}-${day}-${year}`,
+    `${month}-${day}-${shortYear}`,
+    `${monthPadded}-${dayPadded}-${year}`,
+    `${monthPadded}-${dayPadded}-${shortYear}`
+  ]));
+}
+
 function formatMonthShortLabel(monthValue) {
   const [year, month] = String(monthValue).split('-').map(Number);
   const date = new Date(year, month - 1, 1);
@@ -2550,7 +2578,7 @@ function buildTransactionViewModel(transaction, accountMap, categoryMap, subCate
       balance: balanceLabel
     },
     filterValues: {
-      date: [transaction.date, formatDate(transaction.date)],
+      date: getDateFilterCandidates(transaction.date),
       account: [account ? account.name : 'Unknown account'],
       payee: [payeeLabel],
       category: [categoryLabel],
@@ -2638,7 +2666,7 @@ function buildTransferViewModel(transfer, accountMap) {
       memo: transfer.memo || ''
     },
     filterValues: {
-      date: [transfer.transferDate, formatDate(transfer.transferDate)],
+      date: getDateFilterCandidates(transfer.transferDate),
       fromAccount: [originAccount ? originAccount.name : 'Unknown account'],
       toAccount: [destinationAccount ? destinationAccount.name : 'Unknown account'],
       amount: [Number(transfer.amount || 0), formatCurrency(transfer.amount)],
