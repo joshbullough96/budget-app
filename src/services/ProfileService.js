@@ -68,6 +68,14 @@ class ProfileService {
     return (name || '').trim().replace(/\s+/g, ' ');
   }
 
+  normalizeSecurityQuestion(question) {
+    return (question || '').trim().replace(/\s+/g, ' ');
+  }
+
+  normalizeSecurityAnswer(answer) {
+    return (answer || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
   slugify(value) {
     const slug = this.normalizeName(value)
       .toLowerCase()
@@ -119,6 +127,7 @@ class ProfileService {
     return {
       id: profile.id,
       name: profile.name,
+      securityQuestion: profile.securityQuestion || '',
       createdAt: profile.createdAt || null,
       updatedAt: profile.updatedAt || null,
       lastSignedInAt: profile.lastSignedInAt || null
@@ -151,9 +160,11 @@ class ProfileService {
     return this.sanitizeUser(this.readJson(this.getProfilePath(userId)));
   }
 
-  createUser(name, password) {
+  createUser(name, password, securityQuestion, securityAnswer) {
     const normalizedName = this.normalizeName(name);
     const normalizedPassword = password || '';
+    const normalizedSecurityQuestion = this.normalizeSecurityQuestion(securityQuestion);
+    const normalizedSecurityAnswer = this.normalizeSecurityAnswer(securityAnswer);
 
     if (!normalizedName) {
       throw new Error('Enter a name for the new user.');
@@ -161,6 +172,14 @@ class ProfileService {
 
     if (normalizedPassword.length < 8) {
       throw new Error('Passwords must be at least 8 characters long.');
+    }
+
+    if (!normalizedSecurityQuestion) {
+      throw new Error('Enter a security question for password recovery.');
+    }
+
+    if (normalizedSecurityAnswer.length < 3) {
+      throw new Error('Security answers must be at least 3 characters long.');
     }
 
     const existingUsers = this.getUsers();
@@ -173,16 +192,22 @@ class ProfileService {
     const userId = this.ensureUniqueDirectoryName(this.usersDirectory, baseUserId);
     const now = new Date().toISOString();
     const passwordRecord = this.hashPassword(normalizedPassword);
+    const securityAnswerRecord = this.hashPassword(normalizedSecurityAnswer);
     const profile = {
       id: userId,
       name: normalizedName,
+      securityQuestion: normalizedSecurityQuestion,
       createdAt: now,
       updatedAt: now,
       lastSignedInAt: null,
       passwordHash: passwordRecord.hash,
       passwordSalt: passwordRecord.salt,
       passwordAlgorithm: passwordRecord.algorithm,
-      passwordKeyLength: passwordRecord.keyLength
+      passwordKeyLength: passwordRecord.keyLength,
+      securityAnswerHash: securityAnswerRecord.hash,
+      securityAnswerSalt: securityAnswerRecord.salt,
+      securityAnswerAlgorithm: securityAnswerRecord.algorithm,
+      securityAnswerKeyLength: securityAnswerRecord.keyLength
     };
 
     fs.mkdirSync(this.getBudgetsDirectory(userId), { recursive: true });
@@ -222,6 +247,54 @@ class ProfileService {
     }
 
     return true;
+  }
+
+  verifySecurityAnswer(userId, answer) {
+    const profile = this.readJson(this.getProfilePath(userId));
+
+    if (!profile) {
+      throw new Error('That user could not be found.');
+    }
+
+    if (!profile.securityQuestion || !profile.securityAnswerHash || !profile.securityAnswerSalt) {
+      throw new Error('This profile does not have a security question set up yet.');
+    }
+
+    if (!this.verifyPassword(this.normalizeSecurityAnswer(answer), profile.securityAnswerHash, profile.securityAnswerSalt)) {
+      throw new Error('The security answer did not match.');
+    }
+
+    return true;
+  }
+
+  updateSecurityQuestion(userId, securityQuestion, securityAnswer) {
+    const profilePath = this.getProfilePath(userId);
+    const profile = this.readJson(profilePath);
+    const normalizedSecurityQuestion = this.normalizeSecurityQuestion(securityQuestion);
+    const normalizedSecurityAnswer = this.normalizeSecurityAnswer(securityAnswer);
+
+    if (!profile) {
+      throw new Error('That user could not be found.');
+    }
+
+    if (!normalizedSecurityQuestion) {
+      throw new Error('Enter a security question for password recovery.');
+    }
+
+    if (normalizedSecurityAnswer.length < 3) {
+      throw new Error('Security answers must be at least 3 characters long.');
+    }
+
+    const securityAnswerRecord = this.hashPassword(normalizedSecurityAnswer);
+    profile.securityQuestion = normalizedSecurityQuestion;
+    profile.securityAnswerHash = securityAnswerRecord.hash;
+    profile.securityAnswerSalt = securityAnswerRecord.salt;
+    profile.securityAnswerAlgorithm = securityAnswerRecord.algorithm;
+    profile.securityAnswerKeyLength = securityAnswerRecord.keyLength;
+    profile.updatedAt = new Date().toISOString();
+    this.writeJson(profilePath, profile);
+
+    return this.sanitizeUser(profile);
   }
 
   resetPassword(userId, newPassword) {

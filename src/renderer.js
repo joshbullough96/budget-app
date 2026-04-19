@@ -180,9 +180,11 @@ function setAuthViewMode(mode) {
   authViewMode = mode;
   const isCreateMode = mode === 'create-user';
   const isResetMode = mode === 'reset-password';
-  document.getElementById('auth-sign-in-view').classList.toggle('hidden', isCreateMode || isResetMode);
+  const isForgotMode = mode === 'forgot-password';
+  document.getElementById('auth-sign-in-view').classList.toggle('hidden', isCreateMode || isResetMode || isForgotMode);
   document.getElementById('auth-create-user-view').classList.toggle('hidden', !isCreateMode);
   document.getElementById('auth-reset-password-view').classList.toggle('hidden', !isResetMode);
+  document.getElementById('auth-forgot-password-view').classList.toggle('hidden', !isForgotMode);
 
   if (isCreateMode) {
     document.getElementById('auth-panel-eyebrow').textContent = 'Create User';
@@ -195,6 +197,13 @@ function setAuthViewMode(mode) {
     document.getElementById('auth-panel-eyebrow').textContent = 'Reset Password';
     document.getElementById('auth-panel-title').textContent = 'Set a new password';
     document.getElementById('auth-panel-subtitle').textContent = 'Choose an existing user and replace the local password hash with a new one.';
+    return;
+  }
+
+  if (isForgotMode) {
+    document.getElementById('auth-panel-eyebrow').textContent = 'Forgot Password';
+    document.getElementById('auth-panel-title').textContent = 'Recover local access';
+    document.getElementById('auth-panel-subtitle').textContent = 'Confirm the profile you want to recover, then save a new password without the current one.';
     return;
   }
 
@@ -235,9 +244,14 @@ function clearAuthPasswordFields() {
     'sign-in-password',
     'create-user-password',
     'create-user-confirm-password',
+    'create-user-security-answer',
     'reset-password-current',
     'reset-password-value',
-    'reset-password-confirm'
+    'reset-password-confirm',
+    'reset-password-security-answer',
+    'forgot-password-answer',
+    'forgot-password-value',
+    'forgot-password-confirm'
   ].forEach(fieldId => {
     const field = document.getElementById(fieldId);
 
@@ -248,6 +262,30 @@ function clearAuthPasswordFields() {
   });
 
   resetPasswordVisibility();
+}
+
+function syncForgotPasswordQuestion(userId) {
+  const questionField = document.getElementById('forgot-password-question');
+
+  if (!questionField) {
+    return;
+  }
+
+  const user = userId ? profileService.getUser(userId) : null;
+  questionField.value = user?.securityQuestion || '';
+}
+
+function syncResetPasswordRecoveryFields(userId) {
+  const questionField = document.getElementById('reset-password-security-question');
+  const answerField = document.getElementById('reset-password-security-answer');
+
+  if (!questionField || !answerField) {
+    return;
+  }
+
+  const user = userId ? profileService.getUser(userId) : null;
+  questionField.value = user?.securityQuestion || '';
+  answerField.value = '';
 }
 
 function renderUserList() {
@@ -282,16 +320,22 @@ function renderUserList() {
 function populateUserSelects(users) {
   const signInSelect = document.getElementById('sign-in-user-id');
   const resetSelect = document.getElementById('reset-password-user-id');
+  const forgotSelect = document.getElementById('forgot-password-user-id');
   const signInValue = signInSelect.value;
   const resetValue = resetSelect.value;
+  const forgotValue = forgotSelect.value;
   const optionsMarkup = ['<option value="">Choose a user</option>'].concat(
     users.map(user => `<option value="${user.id}">${escapeHtml(user.name)}</option>`)
   ).join('');
 
   signInSelect.innerHTML = optionsMarkup;
   resetSelect.innerHTML = optionsMarkup;
+  forgotSelect.innerHTML = optionsMarkup;
   signInSelect.value = users.some(user => user.id === signInValue) ? signInValue : '';
   resetSelect.value = users.some(user => user.id === resetValue) ? resetValue : '';
+  forgotSelect.value = users.some(user => user.id === forgotValue) ? forgotValue : '';
+  syncResetPasswordRecoveryFields(resetSelect.value);
+  syncForgotPasswordQuestion(forgotSelect.value);
 }
 
 function selectSignInUser(userId) {
@@ -303,6 +347,9 @@ function selectSignInUser(userId) {
 
   document.getElementById('sign-in-user-id').value = user.id;
   document.getElementById('reset-password-user-id').value = user.id;
+  document.getElementById('forgot-password-user-id').value = user.id;
+  syncResetPasswordRecoveryFields(user.id);
+  syncForgotPasswordQuestion(user.id);
   renderUserList();
 }
 
@@ -315,8 +362,12 @@ function showAuthShell() {
   document.getElementById('sign-in-form').reset();
   document.getElementById('create-user-form').reset();
   document.getElementById('reset-password-form').reset();
+  document.getElementById('forgot-password-form').reset();
   document.getElementById('sign-in-user-id').value = '';
   document.getElementById('reset-password-user-id').value = '';
+  document.getElementById('forgot-password-user-id').value = '';
+  syncResetPasswordRecoveryFields('');
+  syncForgotPasswordQuestion('');
   clearAuthPasswordFields();
   setAuthViewMode('sign-in');
   renderUserList();
@@ -471,13 +522,15 @@ async function handleCreateUser(event) {
   const name = document.getElementById('create-user-name').value;
   const password = document.getElementById('create-user-password').value;
   const confirmPassword = document.getElementById('create-user-confirm-password').value;
+  const securityQuestion = document.getElementById('create-user-security-question').value;
+  const securityAnswer = document.getElementById('create-user-security-answer').value;
 
   if (password !== confirmPassword) {
     setStatus('The passwords did not match.');
     return;
   }
 
-  const user = profileService.createUser(name, password);
+  const user = profileService.createUser(name, password, securityQuestion, securityAnswer);
   document.getElementById('create-user-form').reset();
   renderUserList();
   selectSignInUser(user.id);
@@ -498,6 +551,9 @@ async function handleSignIn(event) {
   document.getElementById('sign-in-form').reset();
   document.getElementById('sign-in-user-id').value = user.id;
   document.getElementById('reset-password-user-id').value = user.id;
+  document.getElementById('forgot-password-user-id').value = user.id;
+  syncResetPasswordRecoveryFields(user.id);
+  syncForgotPasswordQuestion(user.id);
   clearAuthPasswordFields();
   renderUserList();
   showManagerShell(user);
@@ -525,6 +581,8 @@ async function handleResetPassword(event) {
   const currentPassword = document.getElementById('reset-password-current').value;
   const nextPassword = document.getElementById('reset-password-value').value;
   const confirmPassword = document.getElementById('reset-password-confirm').value;
+  const securityQuestion = document.getElementById('reset-password-security-question').value;
+  const securityAnswer = document.getElementById('reset-password-security-answer').value;
   const userName = profileService.getUser(userId)?.name || '';
 
   if (!userId) {
@@ -537,13 +595,60 @@ async function handleResetPassword(event) {
     return;
   }
 
+  if ((securityQuestion || securityAnswer) && (!securityQuestion.trim() || !securityAnswer.trim())) {
+    setStatus('Enter both a security question and answer to update recovery.');
+    return;
+  }
+
   profileService.verifyCurrentPassword(userId, currentPassword);
   profileService.resetPassword(userId, nextPassword);
+  if (securityQuestion.trim() && securityAnswer.trim()) {
+    profileService.updateSecurityQuestion(userId, securityQuestion, securityAnswer);
+  }
   document.getElementById('reset-password-form').reset();
   document.getElementById('reset-password-user-id').value = userId;
+  syncResetPasswordRecoveryFields(userId);
   clearAuthPasswordFields();
   setAuthViewMode('sign-in');
-  setStatus(`Password reset for ${userName}.`);
+  setStatus(securityQuestion.trim() && securityAnswer.trim()
+    ? `Password and recovery question updated for ${userName}.`
+    : `Password reset for ${userName}.`);
+}
+
+async function handleForgotPassword(event) {
+  event.preventDefault();
+  const userId = document.getElementById('forgot-password-user-id').value;
+  const answer = document.getElementById('forgot-password-answer').value;
+  const nextPassword = document.getElementById('forgot-password-value').value;
+  const confirmPassword = document.getElementById('forgot-password-confirm').value;
+  const user = profileService.getUser(userId);
+
+  if (!userId || !user) {
+    setStatus('Choose a user before recovering access.');
+    return;
+  }
+
+  if (!user.securityQuestion) {
+    setStatus('This profile does not have a security question set up, so password recovery is not available.');
+    return;
+  }
+
+  if (nextPassword !== confirmPassword) {
+    setStatus('The new passwords did not match.');
+    return;
+  }
+
+  profileService.verifySecurityAnswer(userId, answer);
+  profileService.resetPassword(userId, nextPassword);
+  document.getElementById('forgot-password-form').reset();
+  document.getElementById('sign-in-user-id').value = userId;
+  document.getElementById('reset-password-user-id').value = userId;
+  document.getElementById('forgot-password-user-id').value = userId;
+  syncForgotPasswordQuestion(userId);
+  clearAuthPasswordFields();
+  setAuthViewMode('sign-in');
+  renderUserList();
+  setStatus(`Password recovered for ${user.name}. You can sign in with the new password now.`);
 }
 
 async function loadAccountsLegacy() {
@@ -4703,6 +4808,13 @@ window.onload = () => {
       setStatus(error.message);
     }
   });
+  document.getElementById('forgot-password-form').addEventListener('submit', async (event) => {
+    try {
+      await handleForgotPassword(event);
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
   document.getElementById('user-list').addEventListener('click', event => {
     const userButton = event.target.closest('[data-user-id]');
 
@@ -4714,10 +4826,22 @@ window.onload = () => {
   });
   document.getElementById('sign-in-user-id').addEventListener('change', event => {
     document.getElementById('reset-password-user-id').value = event.target.value;
+    document.getElementById('forgot-password-user-id').value = event.target.value;
+    syncResetPasswordRecoveryFields(event.target.value);
+    syncForgotPasswordQuestion(event.target.value);
     renderUserList();
   });
   document.getElementById('reset-password-user-id').addEventListener('change', event => {
     document.getElementById('sign-in-user-id').value = event.target.value;
+    document.getElementById('forgot-password-user-id').value = event.target.value;
+    syncResetPasswordRecoveryFields(event.target.value);
+    syncForgotPasswordQuestion(event.target.value);
+    renderUserList();
+  });
+  document.getElementById('forgot-password-user-id').addEventListener('change', event => {
+    document.getElementById('sign-in-user-id').value = event.target.value;
+    document.getElementById('reset-password-user-id').value = event.target.value;
+    syncForgotPasswordQuestion(event.target.value);
     renderUserList();
   });
   document.getElementById('budget-list').addEventListener('click', async event => {
@@ -4741,11 +4865,20 @@ window.onload = () => {
     setAuthViewMode('reset-password');
     document.getElementById('reset-password-current').focus();
   });
+  document.getElementById('show-forgot-password').addEventListener('click', () => {
+    setAuthViewMode('forgot-password');
+    syncForgotPasswordQuestion(document.getElementById('forgot-password-user-id').value);
+    document.getElementById('forgot-password-answer').focus();
+  });
   document.getElementById('show-sign-in').addEventListener('click', () => {
     setAuthViewMode('sign-in');
     document.getElementById('sign-in-password').focus();
   });
   document.getElementById('show-sign-in-from-reset').addEventListener('click', () => {
+    setAuthViewMode('sign-in');
+    document.getElementById('sign-in-password').focus();
+  });
+  document.getElementById('show-sign-in-from-forgot').addEventListener('click', () => {
     setAuthViewMode('sign-in');
     document.getElementById('sign-in-password').focus();
   });

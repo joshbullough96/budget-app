@@ -52,6 +52,7 @@
           </form>
           <div class="auth-link-stack">
             <button type="button" id="show-reset-password" class="text-link-button auth-toggle-button">Reset password</button>
+            <button type="button" id="show-forgot-password" class="text-link-button auth-toggle-button">Forgot password?</button>
             <button type="button" id="show-create-user" class="text-link-button auth-toggle-button">Or create a profile</button>
           </div>
         </div>
@@ -74,6 +75,17 @@
               <div class="password-field">
                 <input type="password" id="create-user-confirm-password" placeholder="Re-enter the password" required>
                 <button type="button" class="password-toggle" data-password-target="create-user-confirm-password" aria-label="Show password" aria-pressed="false">Show</button>
+              </div>
+            </label>
+            <label>
+              <span>Security Question</span>
+              <input type="text" id="create-user-security-question" placeholder="What was the name of your first pet?" required>
+            </label>
+            <label>
+              <span>Security Answer</span>
+              <div class="password-field">
+                <input type="password" id="create-user-security-answer" placeholder="Enter your answer" required>
+                <button type="button" class="password-toggle" data-password-target="create-user-security-answer" aria-label="Show answer" aria-pressed="false">Show</button>
               </div>
             </label>
             <div class="button-row">
@@ -112,11 +124,64 @@
                 <button type="button" class="password-toggle" data-password-target="reset-password-confirm" aria-label="Show password" aria-pressed="false">Show</button>
               </div>
             </label>
+            <p class="panel-hint subtle">Leave the recovery fields as-is to keep the current security question, or update both fields together.</p>
+            <label>
+              <span>Security Question</span>
+              <input type="text" id="reset-password-security-question" placeholder="Set a recovery question">
+            </label>
+            <label>
+              <span>Security Answer</span>
+              <div class="password-field">
+                <input type="password" id="reset-password-security-answer" placeholder="Enter a new recovery answer">
+                <button type="button" class="password-toggle" data-password-target="reset-password-security-answer" aria-label="Show answer" aria-pressed="false">Show</button>
+              </div>
+            </label>
             <div class="button-row">
               <button type="submit" class="primary-button">Save New Password</button>
             </div>
           </form>
           <button type="button" id="show-sign-in-from-reset" class="text-link-button auth-toggle-button">Back to sign in</button>
+        </div>
+
+        <div id="auth-forgot-password-view" class="hidden">
+          <form id="forgot-password-form" class="stack-form launch-form">
+            <p class="panel-hint auth-recovery-hint">Use this only if you cannot remember the current password. Answer the saved security question to replace the local password for the selected profile.</p>
+            <label>
+              <span>Selected User</span>
+              <select id="forgot-password-user-id" required>
+                <option value="">Choose a user</option>
+              </select>
+            </label>
+            <label>
+              <span>Security Question</span>
+              <input type="text" id="forgot-password-question" placeholder="Choose a user to load the security question" readonly>
+            </label>
+            <label>
+              <span>Security Answer</span>
+              <div class="password-field">
+                <input type="password" id="forgot-password-answer" placeholder="Enter your saved answer" required>
+                <button type="button" class="password-toggle" data-password-target="forgot-password-answer" aria-label="Show answer" aria-pressed="false">Show</button>
+              </div>
+            </label>
+            <label>
+              <span>New Password</span>
+              <div class="password-field">
+                <input type="password" id="forgot-password-value" placeholder="At least 8 characters" required>
+                <button type="button" class="password-toggle" data-password-target="forgot-password-value" aria-label="Show password" aria-pressed="false">Show</button>
+              </div>
+            </label>
+            <label>
+              <span>Confirm New Password</span>
+              <div class="password-field">
+                <input type="password" id="forgot-password-confirm" placeholder="Re-enter the new password" required>
+                <button type="button" class="password-toggle" data-password-target="forgot-password-confirm" aria-label="Show password" aria-pressed="false">Show</button>
+              </div>
+            </label>
+            <div class="button-row">
+              <button type="submit" class="primary-button">Recover Access</button>
+            </div>
+          </form>
+          <button type="button" id="show-sign-in-from-forgot" class="text-link-button auth-toggle-button">Back to sign in</button>
         </div>
 
         <p class="launch-disclaimer">Avoid saving sensitive information in notes or other saved fields. This app is meant for budgeting details, not private secrets or regulated data.</p>
