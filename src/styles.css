@@ -1876,6 +1876,10 @@ select.txn-input {
   box-shadow: inset 0 0 0 1px rgba(22, 51, 49, 0.06);
 }
 
+.report-pie-chart-double {
+  background: radial-gradient(circle, rgba(255, 253, 248, 0.96) 0 27%, rgba(247, 242, 233, 0.55) 27.5%, rgba(247, 242, 233, 0.18) 100%);
+}
+
 .report-pie-overlay {
   position: absolute;
   inset: 0;
@@ -1883,14 +1887,28 @@ select.txn-input {
   height: 100%;
 }
 
-.report-pie-segment-hitbox {
-  fill: transparent;
-  cursor: pointer;
-  transition: fill 140ms ease;
+.report-pie-ring-base {
+  fill: none;
+  stroke: rgba(22, 51, 49, 0.08);
 }
 
-.report-pie-segment-hitbox:hover {
-  fill: rgba(255, 255, 255, 0.14);
+.report-pie-ring-base.category {
+  stroke-width: 22;
+}
+
+.report-pie-ring-base.subcategory {
+  stroke-width: 13;
+  stroke: rgba(22, 51, 49, 0.05);
+}
+
+.report-pie-ring {
+  fill: none;
+  stroke-linecap: butt;
+  transition: opacity 140ms ease;
+}
+
+.report-pie-ring:hover {
+  opacity: 0.84;
 }
 
 .report-pie-hole {
@@ -1915,7 +1933,15 @@ select.txn-input {
 
 .report-pie-legend {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.55rem;
+  align-items: start;
+}
+
+.report-pie-legend-group {
+  display: grid;
+  gap: 0.1rem;
+  padding-bottom: 0.35rem;
 }
 
 .report-pie-legend-item {
@@ -1923,6 +1949,15 @@ select.txn-input {
   grid-template-columns: auto minmax(0, 1fr);
   gap: 0.45rem;
   align-items: start;
+}
+
+.report-pie-legend-item.is-subcategory {
+  padding-left: 1rem;
+}
+
+.report-pie-legend-item.is-subcategory .report-pie-legend-color {
+  transform: scale(0.82);
+  opacity: 0.9;
 }
 
 .report-pie-legend-color {
@@ -2530,6 +2565,10 @@ select.txn-input {
   }
 
   .report-pie-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .report-pie-legend {
     grid-template-columns: 1fr;
   }
 }

@@ -200,7 +200,7 @@ class ProfileService {
     }
 
     if (!this.verifyPassword(password || '', profile.passwordHash, profile.passwordSalt)) {
-      throw new Error('That password did not match.');
+      throw new Error('Invalid password.');
     }
 
     profile.lastSignedInAt = new Date().toISOString();

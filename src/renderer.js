@@ -3748,7 +3748,7 @@ function buildMonthlyReportSeries(year, transactions, budgetAllocations, categor
   });
 }
 
-function buildCategorySpendSlices(selectedMonth, transactions, categoryMap, subCategoryMap) {
+function buildCategorySpendBreakdown(selectedMonth, transactions, categoryMap, subCategoryMap) {
   const categoryTotals = new Map();
 
   transactions.forEach(transaction => {
@@ -3763,14 +3763,95 @@ function buildCategorySpendSlices(selectedMonth, transactions, categoryMap, subC
       return;
     }
 
+    const amount = Math.abs(Number(transaction.amount || 0));
     const category = categoryMap.get(transaction.categoryId);
-    const label = category ? category.name : 'Uncategorized';
-    categoryTotals.set(label, (categoryTotals.get(label) || 0) + Math.abs(Number(transaction.amount || 0)));
+    const subCategory = transaction.subCategoryId ? subCategoryMap.get(transaction.subCategoryId) : null;
+    const categoryLabel = category ? category.name : 'Uncategorized';
+    const subCategoryLabel = subCategory ? subCategory.name : 'Uncategorized';
+
+    if (!categoryTotals.has(categoryLabel)) {
+      categoryTotals.set(categoryLabel, {
+        label: categoryLabel,
+        value: 0,
+        subCategories: new Map()
+      });
+    }
+
+    const categoryEntry = categoryTotals.get(categoryLabel);
+    categoryEntry.value += amount;
+    categoryEntry.subCategories.set(
+      subCategoryLabel,
+      (categoryEntry.subCategories.get(subCategoryLabel) || 0) + amount
+    );
   });
 
   return Array.from(categoryTotals.entries())
-    .map(([label, value]) => ({ label, value }))
+    .map(([, entry]) => ({
+      label: entry.label,
+      value: entry.value,
+      subCategories: Array.from(entry.subCategories.entries())
+        .map(([label, value]) => ({ label, value }))
+        .sort((left, right) => right.value - left.value)
+    }))
     .sort((left, right) => right.value - left.value);
+}
+
+function hexToRgb(hexColor) {
+  const normalized = String(hexColor || '').replace('#', '');
+  if (normalized.length !== 6) {
+    return null;
+  }
+
+  const value = Number.parseInt(normalized, 16);
+  if (Number.isNaN(value)) {
+    return null;
+  }
+
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255
+  };
+}
+
+function adjustHexColor(hexColor, amount) {
+  const rgb = hexToRgb(hexColor);
+  if (!rgb) {
+    return hexColor;
+  }
+
+  const clamp = value => Math.max(0, Math.min(255, Math.round(value)));
+  return `#${[rgb.r, rgb.g, rgb.b].map(channel => clamp(channel + amount).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function hexToRgba(hexColor, alpha) {
+  const rgb = hexToRgb(hexColor);
+  if (!rgb) {
+    return hexColor;
+  }
+
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+}
+
+function getSubCategoryColor(baseColor, index, totalCount) {
+  if (totalCount <= 1) {
+    return hexToRgba(adjustHexColor(baseColor, 28), 0.72);
+  }
+
+  const midpoint = (totalCount - 1) / 2;
+  const offset = (index - midpoint) * 46;
+  const alpha = 0.52 + ((index / Math.max(1, totalCount - 1)) * 0.32);
+  return hexToRgba(adjustHexColor(baseColor, offset), alpha);
+}
+
+function describeArc(cx, cy, radius, startAngle, endAngle) {
+  const startX = cx + (radius * Math.cos(startAngle));
+  const startY = cy + (radius * Math.sin(startAngle));
+  const endX = cx + (radius * Math.cos(endAngle));
+  const endY = cy + (radius * Math.sin(endAngle));
+  const largeArcFlag = endAngle - startAngle > Math.PI ? 1 : 0;
+
+  return `M ${startX.toFixed(3)} ${startY.toFixed(3)} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${endX.toFixed(3)} ${endY.toFixed(3)}`;
 }
 
 function buildLineChartPath(values, maxValue, chartWidth, chartHeight) {
@@ -3865,8 +3946,8 @@ function renderBudgetVsActualChart(monthlySeries, year) {
   `;
 }
 
-function renderCategorySpendPieChart(selectedMonth, slices) {
-  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+function renderCategorySpendPieChart(selectedMonth, breakdown) {
+  const total = breakdown.reduce((sum, slice) => sum + slice.value, 0);
 
   if (!total) {
     return `
@@ -3885,49 +3966,81 @@ function renderCategorySpendPieChart(selectedMonth, slices) {
   }
 
   const palette = ['#1e7f74', '#d08a3a', '#3868b0', '#7d5ab5', '#bf5c4b', '#2f8f66', '#b36d3f', '#4e8f90'];
-  let cumulativePercent = 0;
-  const gradientStops = slices.map((slice, index) => {
-    const start = cumulativePercent;
-    cumulativePercent += (slice.value / total) * 100;
-    return `${palette[index % palette.length]} ${start.toFixed(2)}% ${cumulativePercent.toFixed(2)}%`;
+  const center = 50;
+  const categoryRadius = 24;
+  const subCategoryRadius = 43;
+  const categoryStroke = 22;
+  const subCategoryStroke = 13;
+  let angleCursor = -(Math.PI / 2);
+
+  const categorySegments = breakdown.map((category, categoryIndex) => {
+    const categoryAngle = (category.value / total) * Math.PI * 2;
+    const categoryStart = angleCursor;
+    const categoryEnd = categoryStart + categoryAngle;
+    const baseColor = palette[categoryIndex % palette.length];
+    let subAngleCursor = categoryStart;
+
+    const subCategories = category.subCategories.map((subCategory, subCategoryIndex) => {
+      const subCategoryAngle = (subCategory.value / total) * Math.PI * 2;
+      const subCategoryStart = subAngleCursor;
+      const subCategoryEnd = subCategoryStart + subCategoryAngle;
+      subAngleCursor = subCategoryEnd;
+
+      return {
+        ...subCategory,
+        color: getSubCategoryColor(baseColor, subCategoryIndex, category.subCategories.length),
+        percent: (subCategory.value / total) * 100,
+        path: describeArc(center, center, subCategoryRadius, subCategoryStart, subCategoryEnd)
+      };
+    });
+
+    angleCursor = categoryEnd;
+
+    return {
+      ...category,
+      color: baseColor,
+      percent: (category.value / total) * 100,
+      path: describeArc(center, center, categoryRadius, categoryStart, categoryEnd),
+      subCategories
+    };
   });
-  let segmentStart = 0;
-  const segmentMarkup = slices.map((slice, index) => {
-    const slicePercent = (slice.value / total) * 100;
-    const segmentEnd = segmentStart + slicePercent;
-    const midPercent = segmentStart + (slicePercent / 2);
-    const angle = (midPercent / 100) * Math.PI * 2 - (Math.PI / 2);
-    const outerRadius = 50;
-    const innerRadius = 22;
-    const center = 50;
-    const x = center + (((outerRadius + innerRadius) / 2) * Math.cos(angle));
-    const y = center + (((outerRadius + innerRadius) / 2) * Math.sin(angle));
 
-    segmentStart = segmentEnd;
-
-    return `
-      <circle
-        class="report-pie-segment-hitbox"
-        cx="${x.toFixed(2)}"
-        cy="${y.toFixed(2)}"
-        r="13"
+  const segmentMarkup = `
+    <circle class="report-pie-ring-base category" cx="${center}" cy="${center}" r="${categoryRadius}"></circle>
+    <circle class="report-pie-ring-base subcategory" cx="${center}" cy="${center}" r="${subCategoryRadius}"></circle>
+    ${categorySegments.map(category => `
+      <path
+        class="report-pie-ring category"
+        d="${category.path}"
+        stroke="${category.color}"
+        stroke-width="${categoryStroke}"
       >
-        <title>${escapeHtml(`${slice.label}: ${formatCurrency(slice.value)} (${((slice.value / total) * 100).toFixed(1)}%)`)}</title>
-      </circle>
-    `;
-  }).join('');
+        <title>${escapeHtml(`${category.label}: ${formatCurrency(category.value)} (${category.percent.toFixed(1)}%)`)}</title>
+      </path>
+    `).join('')}
+    ${categorySegments.flatMap(category => category.subCategories.map(subCategory => `
+      <path
+        class="report-pie-ring subcategory"
+        d="${subCategory.path}"
+        stroke="${subCategory.color}"
+        stroke-width="${subCategoryStroke}"
+      >
+        <title>${escapeHtml(`${category.label} / ${subCategory.label}: ${formatCurrency(subCategory.value)} (${subCategory.percent.toFixed(1)}%)`)}</title>
+      </path>
+    `)).join('')}
+  `;
 
   return `
     <article class="report-card">
       <div class="report-card-copy">
         <p class="eyebrow">Category Mix</p>
-        <h4>Spend by Category</h4>
-        <p class="panel-hint">Posted spending grouped by category for ${formatMonthLabel(selectedMonth)}.</p>
+        <h4>Spend by Category and Subcategory</h4>
+        <p class="panel-hint">The inner ring shows category totals and the outer ring breaks those totals into subcategories for ${formatMonthLabel(selectedMonth)}.</p>
       </div>
       <div class="report-pie-layout">
         <div class="report-pie-shell">
-          <div class="report-pie-chart" style="background: conic-gradient(${gradientStops.join(', ')});">
-            <svg class="report-pie-overlay" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+          <div class="report-pie-chart report-pie-chart-double">
+            <svg class="report-pie-overlay" viewBox="0 0 100 100" role="img" aria-label="Double donut chart showing spending by category and subcategory">
               ${segmentMarkup}
             </svg>
             <div class="report-pie-hole">
@@ -3937,13 +4050,24 @@ function renderCategorySpendPieChart(selectedMonth, slices) {
           </div>
         </div>
         <div class="report-pie-legend">
-          ${slices.map((slice, index) => `
-            <div class="report-pie-legend-item">
-              <span class="report-pie-legend-color" style="background:${palette[index % palette.length]}"></span>
-              <div>
-                <strong>${escapeHtml(slice.label)}</strong>
-                <p>${formatCurrency(slice.value)} • ${((slice.value / total) * 100).toFixed(1)}%</p>
+          ${categorySegments.map(category => `
+            <div class="report-pie-legend-group">
+              <div class="report-pie-legend-item is-category">
+                <span class="report-pie-legend-color" style="background:${category.color}"></span>
+                <div>
+                  <strong>${escapeHtml(category.label)}</strong>
+                  <p>${formatCurrency(category.value)} | ${category.percent.toFixed(1)}%</p>
+                </div>
               </div>
+              ${category.subCategories.map(subCategory => `
+                <div class="report-pie-legend-item is-subcategory">
+                  <span class="report-pie-legend-color" style="background:${subCategory.color}"></span>
+                  <div>
+                    <strong>${escapeHtml(subCategory.label)}</strong>
+                    <p>${formatCurrency(subCategory.value)} | ${subCategory.percent.toFixed(1)}%</p>
+                  </div>
+                </div>
+              `).join('')}
             </div>
           `).join('')}
         </div>
@@ -3972,12 +4096,12 @@ async function loadReports() {
   const categoryMap = new Map(categories.map(category => [category.id, category]));
   const subCategoryMap = new Map(subCategories.map(subCategory => [subCategory.id, subCategory]));
   const monthlySeries = buildMonthlyReportSeries(reportYear, transactions, budgetAllocations, categoryMap, subCategoryMap);
-  const categorySpendSlices = buildCategorySpendSlices(selectedMonth, transactions, categoryMap, subCategoryMap);
+  const categorySpendBreakdown = buildCategorySpendBreakdown(selectedMonth, transactions, categoryMap, subCategoryMap);
 
   reportsView.innerHTML = `
     ${renderBudgetVsActualChart(monthlySeries, reportYear)}
     ${renderInflowOutflowChart(monthlySeries)}
-    ${renderCategorySpendPieChart(selectedMonth, categorySpendSlices)}
+    ${renderCategorySpendPieChart(selectedMonth, categorySpendBreakdown)}
   `;
 }
 
