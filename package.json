@@ -14,8 +14,33 @@
   ],
   "author": "Your Name",
   "license": "MIT",
+  "build": {
+    "appId": "com.yourname.budgetapp",
+    "productName": "Budget App",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "package.json",
+      "src/**/*"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.finance"
+    }
+  },
   "devDependencies": {
-    "electron": "^25.0.0"
+    "electron": "^25.0.0",
+    "electron-builder": "^26.8.1"
   },
   "dependencies": {
     "nedb": "^1.8.0",
