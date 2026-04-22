@@ -1585,7 +1585,7 @@ textarea {
 
 .transaction-row {
   display: grid;
-  grid-template-columns: 150px 140px minmax(160px, 1.2fr) 150px 150px minmax(150px, 1fr) 120px 130px 120px;
+  grid-template-columns: 140px 130px minmax(160px, 1.1fr) 140px 140px minmax(150px, 1fr) 110px 110px 130px 74px 120px;
   gap: 0.5rem;
   align-items: center;
   padding: 0.40rem 0.72rem;
@@ -1701,7 +1701,7 @@ select.txn-input {
     1.45rem 1.45rem;
 }
 
-.txn-amount-input {
+.txn-flow-input {
   text-align: right;
 }
 
@@ -1709,6 +1709,24 @@ select.txn-input {
   display: flex;
   justify-content: flex-end;
   gap: 0.35rem;
+}
+
+.transaction-cleared-cell {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.transaction-cleared-checkbox {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--primary-strong);
+  cursor: pointer;
+}
+
+.transaction-cleared-checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .icon-button.ghost {

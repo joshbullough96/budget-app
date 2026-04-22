@@ -30,7 +30,8 @@ const DEFAULT_TRANSACTION_FILTERS = {
   category: '',
   subCategory: '',
   memo: '',
-  amount: '',
+  inflow: '',
+  outflow: '',
   balance: ''
 };
 const DEFAULT_TRANSFER_FILTERS = {
@@ -1081,8 +1082,10 @@ async function loadTransactions() {
           <div><button type="button" class="transaction-sort-button" data-sort-key="category">Category${getTableSortIndicator(transactionTableState, 'category')}</button></div>
           <div><button type="button" class="transaction-sort-button" data-sort-key="subCategory">Subcategory${getTableSortIndicator(transactionTableState, 'subCategory')}</button></div>
           <div><button type="button" class="transaction-sort-button" data-sort-key="memo">Memo${getTableSortIndicator(transactionTableState, 'memo')}</button></div>
-          <div><button type="button" class="transaction-sort-button" data-sort-key="amount">Amount${getTableSortIndicator(transactionTableState, 'amount')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="outflow">Outflow${getTableSortIndicator(transactionTableState, 'outflow')}</button></div>
+          <div><button type="button" class="transaction-sort-button" data-sort-key="inflow">Inflow${getTableSortIndicator(transactionTableState, 'inflow')}</button></div>
           <div><button type="button" class="transaction-sort-button" data-sort-key="balance">Balance${getTableSortIndicator(transactionTableState, 'balance')}</button></div>
+          <div>Cleared</div>
           <div>Actions</div>
         </div>
         ${transactionTableState.filtersVisible ? `
@@ -1093,8 +1096,10 @@ async function loadTransactions() {
             <div><input type="text" class="txn-filter-input" data-filter-key="category" value="${escapeHtml(transactionTableState.filters.category)}" placeholder="Filter"></div>
             <div><input type="text" class="txn-filter-input" data-filter-key="subCategory" value="${escapeHtml(transactionTableState.filters.subCategory)}" placeholder="Filter"></div>
             <div><input type="text" class="txn-filter-input" data-filter-key="memo" value="${escapeHtml(transactionTableState.filters.memo)}" placeholder="Filter"></div>
-            <div><input type="text" class="txn-filter-input" data-filter-key="amount" value="${escapeHtml(transactionTableState.filters.amount)}" placeholder="Filter"></div>
+            <div><input type="text" class="txn-filter-input" data-filter-key="outflow" value="${escapeHtml(transactionTableState.filters.outflow)}" placeholder="Filter"></div>
+            <div><input type="text" class="txn-filter-input" data-filter-key="inflow" value="${escapeHtml(transactionTableState.filters.inflow)}" placeholder="Filter"></div>
             <div><input type="text" class="txn-filter-input" data-filter-key="balance" value="${escapeHtml(transactionTableState.filters.balance)}" placeholder="Filter"></div>
+            <div></div>
             <div><button type="button" class="secondary-button compact-button transaction-clear-filters">Clear</button></div>
           </div>
         ` : ''}
@@ -2695,6 +2700,9 @@ function buildTransactionViewModel(transaction, accountMap, categoryMap, subCate
   const balanceLabel = transaction.pending
     ? 'Pending'
     : (Number.isFinite(runningBalanceValue) ? formatCurrency(runningBalanceValue) : '');
+  const amountValue = Number(transaction.amount || 0);
+  const inflowValue = amountValue > 0 ? amountValue : 0;
+  const outflowValue = amountValue < 0 ? Math.abs(amountValue) : 0;
   const payeeLabel = transferContext?.payee || transaction.payee || '';
   const categoryLabel = transferContext?.category || (category ? category.name : 'Uncategorized');
   const subCategoryLabel = transferContext?.subCategory || (subCategory ? subCategory.name : '');
@@ -2709,7 +2717,8 @@ function buildTransactionViewModel(transaction, accountMap, categoryMap, subCate
       category: categoryLabel,
       subCategory: subCategoryLabel,
       memo: memoLabel,
-      amount: formatCurrency(transaction.amount),
+      inflow: inflowValue ? formatCurrency(inflowValue) : '',
+      outflow: outflowValue ? formatCurrency(outflowValue) : '',
       balance: balanceLabel
     },
     filterValues: {
@@ -2719,7 +2728,8 @@ function buildTransactionViewModel(transaction, accountMap, categoryMap, subCate
       category: [categoryLabel],
       subCategory: [subCategoryLabel],
       memo: [memoLabel],
-      amount: [Number(transaction.amount || 0), formatCurrency(transaction.amount)],
+      inflow: inflowValue ? [inflowValue, formatCurrency(inflowValue)] : [''],
+      outflow: outflowValue ? [outflowValue, formatCurrency(outflowValue)] : [''],
       balance: transaction.pending
         ? ['Pending']
         : [Number.isFinite(runningBalanceValue) ? runningBalanceValue : '', Number.isFinite(runningBalanceValue) ? formatCurrency(runningBalanceValue) : '']
@@ -2731,7 +2741,8 @@ function buildTransactionViewModel(transaction, accountMap, categoryMap, subCate
       category: categoryLabel,
       subCategory: subCategoryLabel,
       memo: memoLabel,
-      amount: Number(transaction.amount || 0),
+      inflow: inflowValue,
+      outflow: outflowValue,
       balance: transaction.pending
         ? Number.NEGATIVE_INFINITY
         : (Number.isFinite(runningBalanceValue) ? runningBalanceValue : Number.NEGATIVE_INFINITY)
@@ -2748,6 +2759,13 @@ function matchesTransactionFilter(value, filterValue) {
   const candidates = Array.isArray(value) ? value : [value];
 
   return candidates.some(candidate => String(candidate || '').toLowerCase().includes(normalizedFilter));
+}
+
+function getTransactionCreatedOrder(transaction) {
+  const rawId = String(transaction?.id || '');
+  const timestamp = Number(rawId.split('-')[0]);
+
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 function getFilteredAndSortedTransactions(transactions, accountMap, categoryMap, subCategoryMap, transferMap = new Map()) {
@@ -2777,6 +2795,12 @@ function getFilteredAndSortedTransactions(transactions, accountMap, categoryMap,
       if (comparison !== 0) {
         return comparison * direction;
       }
+    }
+
+    const createdOrderDifference = getTransactionCreatedOrder(left.transaction) - getTransactionCreatedOrder(right.transaction);
+
+    if (createdOrderDifference !== 0) {
+      return createdOrderDifference * direction;
     }
 
     return String(left.transaction.id).localeCompare(String(right.transaction.id));
@@ -3011,7 +3035,12 @@ function renderTransactionEditorRow({ rowMode, transaction = null, accounts, cat
     `))
     .join('');
   const memo = transaction?.memo || '';
-  const amount = transaction?.amount ?? '';
+  const inflowAmount = transaction && Number(transaction.amount || 0) > 0
+    ? Math.abs(Number(transaction.amount || 0))
+    : '';
+  const outflowAmount = transaction && Number(transaction.amount || 0) < 0
+    ? Math.abs(Number(transaction.amount || 0))
+    : '';
   const isEditRow = rowMode === 'edit';
 
   return `
@@ -3022,8 +3051,12 @@ function renderTransactionEditorRow({ rowMode, transaction = null, accounts, cat
       <div><select class="txn-input txn-category-select" data-field="categoryId">${buildSelectOptions(categories, categoryId, 'Select')}</select></div>
       <div><select class="txn-input txn-subcategory-select" data-field="subCategoryId" ${!categoryId || !matchingSubCategories.length ? 'disabled' : ''}>${subCategoryOptions}</select></div>
       <div><input type="text" class="txn-input" data-field="memo" value="${escapeHtml(memo)}" placeholder="Memo"></div>
-      <div><input type="number" class="txn-input txn-amount-input" data-field="amount" value="${escapeHtml(String(amount))}" step="0.01" placeholder="0.00"></div>
+      <div><input type="number" class="txn-input txn-flow-input" data-field="outflow" value="${escapeHtml(String(outflowAmount))}" step="0.01" min="0" placeholder="0.00" aria-label="Transaction outflow"></div>
+      <div><input type="number" class="txn-input txn-flow-input" data-field="inflow" value="${escapeHtml(String(inflowAmount))}" step="0.01" min="0" placeholder="0.00" aria-label="Transaction inflow"></div>
       <div class="transaction-muted-cell">Auto</div>
+      <div class="transaction-cleared-cell">
+        <input type="checkbox" class="transaction-cleared-checkbox" disabled aria-label="Transaction cleared">
+      </div>
       <div class="transaction-actions">
         <button type="button" class="icon-button" onclick="${isEditRow ? `saveTransactionEdit('${transactionId}')` : 'createTransaction()'}" aria-label="${isEditRow ? 'Save transaction' : 'Add transaction'}" title="${isEditRow ? 'Save transaction' : 'Add transaction'}">
           ${getActionIcon('save')}
@@ -3042,7 +3075,7 @@ function renderTransactionDisplayRow(transaction, accountMap, categoryMap, subCa
   const subCategory = transaction.subCategoryId ? subCategoryMap.get(transaction.subCategoryId) : null;
   const transfer = transaction.transferId ? transferMap.get(transaction.transferId) : null;
   const transferContext = getTransferDisplayContext(transaction, transfer, accountMap);
-  const amountClass = Number(transaction.amount) >= 0 ? 'positive' : 'negative';
+  const amountValue = Number(transaction.amount || 0);
   const runningBalance = transaction.pending
     ? 'Pending'
     : (Number.isFinite(Number(transaction.runningBalance))
@@ -3075,8 +3108,19 @@ function renderTransactionDisplayRow(transaction, accountMap, categoryMap, subCa
       <div>${escapeHtml(categoryLabel)}</div>
       <div>${escapeHtml(subCategoryLabel)}</div>
       <div class="transaction-muted-cell">${escapeHtml(memoLabel)}</div>
-      <div class="amount ${amountClass}">${formatCurrency(transaction.amount)}</div>
+      <div class="amount negative">${amountValue < 0 ? formatCurrency(Math.abs(amountValue)) : ''}</div>
+      <div class="amount positive">${amountValue > 0 ? formatCurrency(amountValue) : ''}</div>
       <div class="${transaction.pending ? 'transaction-muted-cell transaction-pending-balance' : 'amount'}">${escapeHtml(runningBalance)}</div>
+      <div class="transaction-cleared-cell">
+        <input
+          type="checkbox"
+          class="transaction-cleared-checkbox"
+          data-transaction-cleared-id="${transaction.id}"
+          ${transaction.cleared ? 'checked' : ''}
+          ${transaction.pending ? 'disabled' : ''}
+          aria-label="Mark ${escapeHtml(payeeLabel || 'transaction')} as cleared"
+        >
+      </div>
       <div class="transaction-actions">
         ${actionsMarkup}
       </div>
@@ -3277,6 +3321,11 @@ function updateTransactionRowSubcategories(row) {
 }
 
 function readTransactionRowValues(row) {
+  const inflowAmount = parseFloat(row.querySelector('[data-field="inflow"]').value);
+  const outflowAmount = parseFloat(row.querySelector('[data-field="outflow"]').value);
+  const normalizedInflow = Number.isFinite(inflowAmount) ? Math.abs(inflowAmount) : 0;
+  const normalizedOutflow = Number.isFinite(outflowAmount) ? Math.abs(outflowAmount) : 0;
+
   return {
     date: row.querySelector('[data-field="date"]').value,
     accountId: row.querySelector('[data-field="accountId"]').value,
@@ -3284,7 +3333,11 @@ function readTransactionRowValues(row) {
     categoryId: row.querySelector('[data-field="categoryId"]').value,
     subCategoryId: row.querySelector('[data-field="subCategoryId"]').value,
     memo: row.querySelector('[data-field="memo"]').value.trim(),
-    amount: parseFloat(row.querySelector('[data-field="amount"]').value)
+    amount: normalizedInflow > 0
+      ? normalizedInflow
+      : (normalizedOutflow > 0 ? -normalizedOutflow : Number.NaN),
+    inflow: normalizedInflow,
+    outflow: normalizedOutflow
   };
 }
 
@@ -3364,8 +3417,12 @@ function validateTransactionValues(values) {
     throw new Error('Please choose a category.');
   }
 
-  if (!Number.isFinite(values.amount)) {
-    throw new Error('Please enter a valid amount.');
+  if (values.inflow > 0 && values.outflow > 0) {
+    throw new Error('Enter a value in either inflow or outflow, not both.');
+  }
+
+  if (!Number.isFinite(values.amount) || Number(values.amount) === 0) {
+    throw new Error('Please enter an inflow or outflow amount greater than zero.');
   }
 }
 
@@ -3422,7 +3479,9 @@ function buildTransferRecordPatch(values, overrides = {}) {
   };
 }
 
-function buildTransferTransactionPatch(transaction) {
+function buildTransferTransactionPatch(transaction, existingTransaction = null) {
+  const isPending = transaction.pending === true;
+
   return {
     date: transaction.date,
     accountId: transaction.accountId,
@@ -3432,8 +3491,8 @@ function buildTransferTransactionPatch(transaction) {
     amount: transaction.amount,
     memo: transaction.memo,
     transferId: transaction.transferId || null,
-    pending: transaction.pending === true,
-    cleared: false
+    pending: isPending,
+    cleared: isPending ? false : Boolean(existingTransaction?.cleared)
   };
 }
 
@@ -3502,8 +3561,13 @@ async function ensureTransferTransactions(nextTransfer, existingTransfer = null)
   const hasExistingPair = Boolean(existingTransfer?.originTransactionId && existingTransfer?.destinationTransactionId);
 
   if (hasExistingPair) {
-    await cache.update('transactions', { id: existingTransfer.originTransactionId }, { $set: buildTransferTransactionPatch(originTransaction) });
-    await cache.update('transactions', { id: existingTransfer.destinationTransactionId }, { $set: buildTransferTransactionPatch(destinationTransaction) });
+    const [existingOriginTransaction, existingDestinationTransaction] = await Promise.all([
+      cache.findOne('transactions', { id: existingTransfer.originTransactionId }),
+      cache.findOne('transactions', { id: existingTransfer.destinationTransactionId })
+    ]);
+
+    await cache.update('transactions', { id: existingTransfer.originTransactionId }, { $set: buildTransferTransactionPatch(originTransaction, existingOriginTransaction) });
+    await cache.update('transactions', { id: existingTransfer.destinationTransactionId }, { $set: buildTransferTransactionPatch(destinationTransaction, existingDestinationTransaction) });
 
     return {
       originTransactionId: existingTransfer.originTransactionId,
@@ -3579,8 +3643,8 @@ async function syncTransferTransactionState() {
         status: normalizedStatus
       };
       const { originTransaction, destinationTransaction } = buildTransferTransactionRecords(nextTransfer, accountMap);
-      await cache.update('transactions', { id: existingOriginTransaction.id }, { $set: buildTransferTransactionPatch(originTransaction) });
-      await cache.update('transactions', { id: existingDestinationTransaction.id }, { $set: buildTransferTransactionPatch(destinationTransaction) });
+      await cache.update('transactions', { id: existingOriginTransaction.id }, { $set: buildTransferTransactionPatch(originTransaction, existingOriginTransaction) });
+      await cache.update('transactions', { id: existingDestinationTransaction.id }, { $set: buildTransferTransactionPatch(destinationTransaction, existingDestinationTransaction) });
 
       if (transfer.status !== normalizedStatus) {
         await cache.update('transfers', { id: transfer.id }, { $set: { status: normalizedStatus } });
@@ -3685,6 +3749,32 @@ function parseImportedAmount(rawValue) {
   return Number.parseFloat(normalized);
 }
 
+function parseImportedTransactionAmount({ inflowRaw = '', outflowRaw = '', amountRaw = '' }) {
+  const inflow = parseImportedAmount(inflowRaw);
+  const outflow = parseImportedAmount(outflowRaw);
+  const amount = parseImportedAmount(amountRaw);
+  const hasInflow = Number.isFinite(inflow) && inflow > 0;
+  const hasOutflow = Number.isFinite(outflow) && outflow > 0;
+
+  if (hasInflow && hasOutflow) {
+    return { amount: Number.NaN, error: 'both inflow and outflow were provided' };
+  }
+
+  if (hasInflow) {
+    return { amount: Math.abs(inflow), error: '' };
+  }
+
+  if (hasOutflow) {
+    return { amount: -Math.abs(outflow), error: '' };
+  }
+
+  if (Number.isFinite(amount) && amount !== 0) {
+    return { amount, error: '' };
+  }
+
+  return { amount: Number.NaN, error: 'no valid inflow or outflow amount was provided' };
+}
+
 function buildTransactionImportMaps(accounts, categories, subCategories) {
   return {
     accountsByName: new Map(accounts.map(account => [account.name.trim().toLowerCase(), account])),
@@ -3719,16 +3809,23 @@ async function importTransactionsFromCsv() {
       payee: resolveImportColumnIndex(headerMap, ['payee']),
       category: resolveImportColumnIndex(headerMap, ['category', 'categoryname']),
       subCategory: resolveImportColumnIndex(headerMap, ['subcategory', 'subcat', 'subcategoryname']),
+      inflow: resolveImportColumnIndex(headerMap, ['inflow', 'credit']),
+      outflow: resolveImportColumnIndex(headerMap, ['outflow', 'debit']),
       amount: resolveImportColumnIndex(headerMap, ['amount']),
       memo: resolveImportColumnIndex(headerMap, ['memo', 'note', 'notes'])
     };
+    const hasSplitFlowColumns = columnIndexes.inflow !== -1 || columnIndexes.outflow !== -1;
 
     const missingColumns = Object.entries(columnIndexes)
-      .filter(([key, index]) => ['date', 'account', 'payee', 'category', 'amount'].includes(key) && index === -1)
+      .filter(([key, index]) => ['date', 'account', 'payee', 'category'].includes(key) && index === -1)
       .map(([key]) => key);
 
     if (missingColumns.length) {
       throw new Error(`Missing required CSV column(s): ${missingColumns.join(', ')}.`);
+    }
+
+    if (!hasSplitFlowColumns && columnIndexes.amount === -1) {
+      throw new Error('Missing required CSV column(s): inflow and outflow.');
     }
 
     const [accounts, categories, subCategories] = await Promise.all([
@@ -3747,11 +3844,13 @@ async function importTransactionsFromCsv() {
       const payee = String(row[columnIndexes.payee] || '').trim();
       const categoryName = String(row[columnIndexes.category] || '').trim().toLowerCase();
       const subCategoryName = columnIndexes.subCategory === -1 ? '' : String(row[columnIndexes.subCategory] || '').trim().toLowerCase();
-      const amountRaw = String(row[columnIndexes.amount] || '').trim();
+      const inflowRaw = columnIndexes.inflow === -1 ? '' : String(row[columnIndexes.inflow] || '').trim();
+      const outflowRaw = columnIndexes.outflow === -1 ? '' : String(row[columnIndexes.outflow] || '').trim();
+      const amountRaw = columnIndexes.amount === -1 ? '' : String(row[columnIndexes.amount] || '').trim();
       const memo = columnIndexes.memo === -1 ? '' : String(row[columnIndexes.memo] || '').trim();
       const account = accountsByName.get(accountName);
       const category = categoriesByName.get(categoryName);
-      const amount = parseImportedAmount(amountRaw);
+      const { amount, error: amountError } = parseImportedTransactionAmount({ inflowRaw, outflowRaw, amountRaw });
 
       if (!date || Number.isNaN(parseDateValue(date).getTime())) {
         errors.push(`Row ${csvRowNumber}: invalid date "${date}".`);
@@ -3774,7 +3873,10 @@ async function importTransactionsFromCsv() {
       }
 
       if (!Number.isFinite(amount)) {
-        errors.push(`Row ${csvRowNumber}: amount "${row[columnIndexes.amount]}" is not valid.`);
+        const flowLabel = hasSplitFlowColumns
+          ? `inflow "${inflowRaw}" and outflow "${outflowRaw}"`
+          : `amount "${amountRaw}"`;
+        errors.push(`Row ${csvRowNumber}: ${flowLabel} is not valid because ${amountError}.`);
         return;
       }
 
@@ -3871,7 +3973,7 @@ async function exportTransactionsCsv() {
 
   downloadCsvFile(
     buildCsvFileName('transactions'),
-    ['Date', 'Account', 'Payee', 'Category', 'Subcategory', 'Memo', 'Amount', 'Balance', 'Status'],
+    ['Date', 'Account', 'Payee', 'Category', 'Subcategory', 'Memo', 'Inflow', 'Outflow', 'Balance', 'Status', 'Cleared'],
     visibleTransactions.map(({ transaction, values }) => [
       transaction.date,
       values.account,
@@ -3879,9 +3981,11 @@ async function exportTransactionsCsv() {
       values.category,
       values.subCategory,
       values.memo,
-      Number(transaction.amount || 0).toFixed(2),
+      Number(transaction.amount || 0) > 0 ? Number(transaction.amount || 0).toFixed(2) : '',
+      Number(transaction.amount || 0) < 0 ? Math.abs(Number(transaction.amount || 0)).toFixed(2) : '',
       transaction.pending ? 'Pending' : values.balance,
-      transaction.pending ? 'Pending' : 'Posted'
+      transaction.pending ? 'Pending' : 'Posted',
+      transaction.cleared ? 'Yes' : 'No'
     ])
   );
 
@@ -3910,6 +4014,71 @@ async function exportTransfersCsv() {
   );
 
   setStatus(`Exported ${visibleTransfers.length} transfer row${visibleTransfers.length === 1 ? '' : 's'}.`);
+}
+
+async function exportCategoriesCsv() {
+  const [rawCategories, rawSubCategories] = await Promise.all([
+    cache.getAll('categories'),
+    cache.getAll('subCategories')
+  ]);
+  const categories = sortItemsForDisplay(rawCategories);
+  const subCategories = rawSubCategories.slice();
+  const rows = categories.flatMap(category => {
+    const categoryTarget = getBudgetTarget(category);
+    const categoryRecurring = getBudgetRecurring(category);
+    const categorySubCategories = sortItemsForDisplay(
+      subCategories.filter(subCategory => subCategory.categoryId === category.id)
+    );
+    const categoryRow = [[
+      category.name,
+      '',
+      'Category',
+      category.offBudget ? 'Off Budget' : 'On Budget',
+      categoryTarget.type ? (TARGET_TYPE_LABELS[categoryTarget.type] || categoryTarget.type) : '',
+      Number(categoryTarget.amount || 0).toFixed(2),
+      categoryRecurring.enabled ? 'Yes' : 'No',
+      categoryRecurring.enabled ? (RECURRING_CADENCE_LABELS[categoryRecurring.cadence] || categoryRecurring.cadence) : '',
+      categoryRecurring.enabled ? Number(categoryRecurring.amount || 0).toFixed(2) : '',
+      category.note || '',
+      Number.isFinite(category.sortOrder) ? category.sortOrder : '',
+      category.id
+    ]];
+
+    const subCategoryRows = categorySubCategories.map(subCategory => {
+      const target = getBudgetTarget(subCategory);
+      const recurring = getBudgetRecurring(subCategory);
+
+      return [
+        category.name,
+        subCategory.name,
+        'Subcategory',
+        subCategory.offBudget ? 'Off Budget' : 'On Budget',
+        target.type ? (TARGET_TYPE_LABELS[target.type] || target.type) : '',
+        Number(target.amount || 0).toFixed(2),
+        recurring.enabled ? 'Yes' : 'No',
+        recurring.enabled ? (RECURRING_CADENCE_LABELS[recurring.cadence] || recurring.cadence) : '',
+        recurring.enabled ? Number(recurring.amount || 0).toFixed(2) : '',
+        subCategory.note || '',
+        Number.isFinite(subCategory.sortOrder) ? subCategory.sortOrder : '',
+        subCategory.id
+      ];
+    });
+
+    return categoryRow.concat(subCategoryRows);
+  });
+
+  if (!rows.length) {
+    setStatus('There are no categories to export yet.');
+    return;
+  }
+
+  downloadCsvFile(
+    buildCsvFileName('categories'),
+    ['Category', 'Subcategory', 'Line Type', 'Budget Status', 'Target Type', 'Target Amount', 'Recurring Enabled', 'Recurring Cadence', 'Recurring Amount', 'Note', 'Sort Order', 'Id'],
+    rows
+  );
+
+  setStatus(`Exported ${rows.length} category row${rows.length === 1 ? '' : 's'}.`);
 }
 
 function buildVisibleBudgetExportRows() {
@@ -4473,6 +4642,16 @@ async function saveTransactionEdit(transactionId) {
     await refreshDashboard();
     await loadTransactions();
     setStatus(`Updated transaction: ${values.payee}`);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function setTransactionCleared(transactionId, cleared) {
+  try {
+    await cache.update('transactions', { id: transactionId }, { $set: { cleared: cleared === true } });
+    await loadTransactions();
+    setStatus(cleared ? 'Transaction marked cleared.' : 'Transaction marked uncleared.');
   } catch (error) {
     setStatus(error.message);
   }
@@ -5248,9 +5427,14 @@ window.onload = () => {
     resetCategoryForm();
     setStatus('Category edit canceled');
   });
-    document.getElementById('transactions-list').addEventListener('change', (e) => {
+    document.getElementById('transactions-list').addEventListener('change', async (e) => {
       if (e.target.classList.contains('txn-category-select')) {
         updateTransactionRowSubcategories(e.target.closest('.transaction-editor-row'));
+        return;
+      }
+
+      if (e.target.classList.contains('transaction-cleared-checkbox') && e.target.dataset.transactionClearedId) {
+        await setTransactionCleared(e.target.dataset.transactionClearedId, e.target.checked);
       }
     });
     document.getElementById('transactions-list').addEventListener('input', (e) => {
@@ -5313,6 +5497,9 @@ window.onload = () => {
     });
     document.getElementById('transaction-export-button').addEventListener('click', async () => {
       await exportTransactionsCsv();
+    });
+    document.getElementById('category-export-button').addEventListener('click', async () => {
+      await exportCategoriesCsv();
     });
     document.getElementById('transfers-list').addEventListener('input', e => {
       if (!e.target.classList.contains('transfer-filter-input')) {

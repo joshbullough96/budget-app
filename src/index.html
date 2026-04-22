@@ -460,9 +460,14 @@
 
           <section class="panel list-panel">
             <div class="panel-heading">
-              <p class="eyebrow">Categories</p>
-              <h3>Category groups and subcategories</h3>
-              <p class="panel-hint">Drag category cards to reorder groups.</p>
+              <div class="transactions-heading-copy">
+                <p class="eyebrow">Categories</p>
+                <h3>Category groups and subcategories</h3>
+                <p class="panel-hint">Drag category cards to reorder groups.</p>
+              </div>
+              <div class="table-toolbar-actions">
+                <button type="button" id="category-export-button" class="secondary-button compact-button">Export CSV</button>
+              </div>
             </div>
             <div id="categories-list" class="data-list"></div>
           </section>
@@ -484,7 +489,7 @@
                       <input type="file" id="transaction-csv-file" accept=".csv,text/csv">
                       <button type="button" id="transaction-import-button" class="secondary-button">Import CSV</button>
                     </div>
-                    <p class="panel-hint subtle transactions-import-hint">Required CSV columns: date, account, payee, category, amount. Optional: subcategory, memo.</p>
+                    <p class="panel-hint subtle transactions-import-hint">Required CSV columns: date, account, payee, category, inflow, outflow. Optional: subcategory, memo. Leave one of inflow or outflow blank on each row.</p>
                   </div>
                   <div class="table-toolbar-actions">
                     <button type="button" id="transaction-export-button" class="secondary-button compact-button">Export CSV</button>
