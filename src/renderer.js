@@ -1514,6 +1514,52 @@ function getActivityAmountForEntry(context, month, entry) {
   ) || 0);
 }
 
+function isBudgetAccountInScope(account) {
+  return Boolean(account && account.active !== false && !account.offBudget);
+}
+
+function buildBudgetMonthlySummary(context, month, groups) {
+  const monthTransactions = context.transactions.filter(transaction => (
+    !transaction.pending
+    && context.activeBudgetAccountIds.has(transaction.accountId)
+    && String(transaction.date || '').slice(0, 7) === month
+  ));
+  const inflow = monthTransactions
+    .filter(transaction => !transaction.transferId && Number(transaction.amount || 0) > 0)
+    .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+  const outflow = monthTransactions
+    .filter(transaction => !transaction.transferId && Number(transaction.amount || 0) < 0)
+    .reduce((sum, transaction) => sum + Math.abs(Number(transaction.amount || 0)), 0);
+  const balance = context.accounts
+    .filter(isBudgetAccountInScope)
+    .reduce((sum, account) => {
+      const accountBalance = context.transactions.reduce((accountSum, transaction) => {
+        if (
+          transaction.pending
+          || transaction.accountId !== account.id
+          || String(transaction.date || '').slice(0, 7) > month
+        ) {
+          return accountSum;
+        }
+
+        return accountSum + Number(transaction.amount || 0);
+      }, Number(account.startingBalance || 0));
+
+      return sum + accountBalance;
+    }, 0);
+  const budgeted = groups.reduce((sum, group) => sum + group.totals.assigned, 0);
+  const available = inflow - budgeted;
+
+  return {
+    monthLabel: formatMonthLabel(month),
+    inflow,
+    outflow,
+    balance,
+    budgeted,
+    available
+  };
+}
+
 function getCarryoverAmountForEntry(context, month, entry) {
   const relevantMonths = Array.from(new Set(
     [
@@ -1564,7 +1610,7 @@ function buildBudgetPresentationModel(context, month, draftAllocations) {
     });
     const totals = rows.reduce((sum, row) => ({
       carryover: sum.carryover + row.carryover,
-      assigned: sum.assigned + row.committedAssigned,
+      assigned: sum.assigned + row.assigned,
       activity: sum.activity + row.activity,
       available: sum.available + row.available
     }), {
@@ -1581,55 +1627,45 @@ function buildBudgetPresentationModel(context, month, draftAllocations) {
     };
   });
 
-  const selectedMonthSavedAssigned = groups.reduce((sum, group) => sum + group.totals.assigned, 0);
-
-  const totalAssignedAcrossSavedMonths = context.budgetAllocations.reduce(
-    (sum, allocation) => sum + Number(allocation.assigned || 0),
-    0
-  );
-  const assignedThisMonth = selectedMonthSavedAssigned;
-  const activityThisMonth = groups.reduce((sum, group) => sum + group.totals.activity, 0);
-  const reservedAssignedOutsideSelectedMonth = totalAssignedAcrossSavedMonths - selectedMonthSavedAssigned;
-  const availableToBudget = context.availableCash - reservedAssignedOutsideSelectedMonth;
-  const leftToAssign = availableToBudget - assignedThisMonth;
-
   return {
     groups,
-    summary: {
-      availableToBudget,
-      cashOnHand: context.availableCash,
-      assignedThisMonth,
-      activityThisMonth,
-      leftToAssign
-    }
+    summary: buildBudgetMonthlySummary(context, month, groups)
   };
 }
 
-function renderBudgetSummaryCards(summary, monthLabel) {
+function renderBudgetSummaryCards(summary) {
   const container = document.getElementById('budget-summary-cards');
-  const remainingClass = summary.leftToAssign < 0 ? 'negative' : 'positive';
-  const remainingLabel = summary.leftToAssign < 0 ? 'Overbudget' : 'Left To Assign';
 
   container.innerHTML = `
     <article class="hero-card budget-cash-card">
-      <p class="hero-label">Available To Budget</p>
-      <h3 id="available-to-budget">${formatCurrency(summary.availableToBudget)}</h3>
-      <p class="hero-copy">Current cash after reserving assigned dollars from every other saved month.</p>
+      <p class="hero-label">Per Month</p>
+      <h3>${escapeHtml(summary.monthLabel)}</h3>
+      <p class="hero-copy">Monthly rollup for active, on-budget accounts.</p>
     </article>
     <article class="hero-card">
-      <p class="hero-label">Assigned</p>
-      <h3>${formatCurrency(summary.assignedThisMonth)}</h3>
-      <p class="hero-copy">Money assigned in ${escapeHtml(monthLabel)}.</p>
+      <p class="hero-label">Balance</p>
+      <h3 class="amount ${summary.balance < 0 ? 'negative' : 'positive'}">${formatCurrency(summary.balance)}</h3>
+      <p class="hero-copy">Ending account balance across active, on-budget accounts.</p>
     </article>
     <article class="hero-card">
-      <p class="hero-label">Activity</p>
-      <h3>${formatCurrency(summary.activityThisMonth)}</h3>
-      <p class="hero-copy">Transaction-driven inflow and outflow for the selected month.</p>
+      <p class="hero-label">Inflow</p>
+      <h3 class="amount positive">${formatCurrency(summary.inflow)}</h3>
+      <p class="hero-copy">Posted incoming money for the month.</p>
     </article>
     <article class="hero-card">
-      <p class="hero-label">${remainingLabel}</p>
-      <h3 class="amount ${remainingClass}">${formatCurrency(summary.leftToAssign)}</h3>
-      <p class="hero-copy">${summary.leftToAssign < 0 ? 'You have assigned more cash than is currently available.' : 'Every remaining dollar is still ready to be assigned.'}</p>
+      <p class="hero-label">Outflow</p>
+      <h3 class="amount negative">${formatCurrency(-summary.outflow)}</h3>
+      <p class="hero-copy">Posted spending for the month, excluding transfers.</p>
+    </article>
+    <article class="hero-card">
+      <p class="hero-label">Budgeted</p>
+      <h3>${formatCurrency(summary.budgeted)}</h3>
+      <p class="hero-copy">Assigned in the current month, including draft edits.</p>
+    </article>
+    <article class="hero-card">
+      <p class="hero-label">Available</p>
+      <h3 class="amount ${summary.available < 0 ? 'negative' : 'positive'}">${formatCurrency(summary.available)}</h3>
+      <p class="hero-copy">Total available across budget rows for the month. (Inflow - Budgeted)</p>
     </article>
   `;
 }
@@ -1655,11 +1691,6 @@ function renderBudgetMonthGrid(month, model, draftMeta, isSelected = false) {
                 <div class="budget-group-copy">
                   <h4>${escapeHtml(group.name)}</h4>
                   <p>${escapeHtml(`${group.rows.filter(row => !row.isCategoryFallback).length} ${group.rows.filter(row => !row.isCategoryFallback).length === 1 ? 'subcategory' : 'subcategories'}`)}</p>
-                  <div class="budget-group-totals">
-                    <span class="pill" data-category-assigned="${month}::${group.id}">Assigned ${formatCurrency(group.totals.assigned)}</span>
-                    <span class="pill ${group.totals.activity < 0 ? 'warn' : ''}" data-category-activity="${month}::${group.id}">Activity ${formatCurrency(group.totals.activity)}</span>
-                    <span class="pill ${group.totals.available < 0 ? 'warn' : ''}" data-category-total="${month}::${group.id}">Remaining ${formatCurrency(group.totals.available)}</span>
-                  </div>
                 </div>
               </div>
               <div class="budget-row budget-row-head">
@@ -1816,7 +1847,7 @@ function renderBudgetWorkspace() {
     || monthModels[1]
     || monthModels[0];
 
-  renderBudgetSummaryCards(focusedMonthModel.model.summary, formatMonthLabel(focusedMonthModel.month));
+  renderBudgetSummaryCards(focusedMonthModel.model.summary);
   renderBudgetWorkspaceGrid(monthModels);
   syncBudgetDirtyStatus();
 }
@@ -1838,27 +1869,9 @@ function refreshBudgetComputedDisplay() {
     || monthModels[1]
     || monthModels[0];
 
-  renderBudgetSummaryCards(focusedMonthModel.model.summary, formatMonthLabel(focusedMonthModel.month));
+  renderBudgetSummaryCards(focusedMonthModel.model.summary);
   monthModels.forEach(({ month, model }) => {
     model.groups.forEach(group => {
-      const categoryAssigned = document.querySelector(`[data-category-assigned="${month}::${group.id}"]`);
-      const categoryActivity = document.querySelector(`[data-category-activity="${month}::${group.id}"]`);
-      const categoryTotal = document.querySelector(`[data-category-total="${month}::${group.id}"]`);
-
-      if (categoryAssigned) {
-        categoryAssigned.textContent = `Assigned ${formatCurrency(group.totals.assigned)}`;
-      }
-
-      if (categoryActivity) {
-        categoryActivity.textContent = `Activity ${formatCurrency(group.totals.activity)}`;
-        categoryActivity.classList.toggle('warn', group.totals.activity < 0);
-      }
-
-      if (categoryTotal) {
-        categoryTotal.textContent = `Remaining ${formatCurrency(group.totals.available)}`;
-        categoryTotal.classList.toggle('warn', group.totals.available < 0);
-      }
-
       group.rows.forEach(row => {
         const rowElement = document.querySelector(`[data-budget-row-key="${month}::${row.entryKey}"]`);
 
@@ -2095,9 +2108,6 @@ async function loadBudgetView(options = {}) {
     cache.getAll('transactions'),
     cache.getAll('budgetAllocations')
   ]);
-  const availableCash = accounts
-    .filter(account => account.active !== false && !account.offBudget)
-    .reduce((sum, account) => sum + Number(account.currentBalance || 0), 0);
   const entries = buildBudgetEntryDefinitions(categories, subCategories, transactions, budgetAllocations);
   const visibleMonths = getVisibleBudgetMonths(targetMonth);
   const centeredMonth = visibleMonths[1] || targetMonth;
@@ -2105,8 +2115,10 @@ async function loadBudgetView(options = {}) {
   budgetState.selectedMonth = centeredMonth;
   budgetState.loadedMonth = centeredMonth;
   budgetState.visibleMonths = visibleMonths;
+  const activeBudgetAccounts = accounts.filter(isBudgetAccountInScope);
   budgetState.context = {
-    availableCash,
+    accounts: activeBudgetAccounts,
+    activeBudgetAccountIds: new Set(activeBudgetAccounts.map(account => account.id)),
     budgetAllocations,
     entries,
     transactions,
