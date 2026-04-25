@@ -1575,6 +1575,10 @@ textarea {
   overflow-x: auto;
 }
 
+.table-shortcut-tip {
+  margin: 0 0 0.45rem;
+}
+
 .transaction-table,
 .transfer-table {
   overflow: hidden;

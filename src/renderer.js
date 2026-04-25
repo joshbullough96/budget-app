@@ -5531,7 +5531,9 @@ window.onload = () => {
       loadTransactions();
     });
     document.getElementById('transactions-list').addEventListener('keydown', async e => {
-      if (!(e.ctrlKey || e.metaKey) || e.key !== 'Enter') {
+      const isSaveShortcut = (e.ctrlKey || e.metaKey) && (e.key === 'Enter' || e.key.toLowerCase() === 'k');
+
+      if (!isSaveShortcut) {
         return;
       }
 
@@ -5608,7 +5610,9 @@ window.onload = () => {
       loadTransfers();
     });
     document.getElementById('transfers-list').addEventListener('keydown', async e => {
-      if (!(e.ctrlKey || e.metaKey) || e.key !== 'Enter') {
+      const isSaveShortcut = (e.ctrlKey || e.metaKey) && (e.key === 'Enter' || e.key.toLowerCase() === 'k');
+
+      if (!isSaveShortcut) {
         return;
       }
 
