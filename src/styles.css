@@ -1583,9 +1583,13 @@ textarea {
   background: rgba(255, 253, 248, 0.86);
 }
 
+.transaction-table {
+  min-width: max-content;
+}
+
 .transaction-row {
   display: grid;
-  grid-template-columns: 140px 130px minmax(160px, 1.1fr) 140px 140px minmax(150px, 1fr) 110px 110px 130px 74px 120px;
+  grid-template-columns: 140px 130px minmax(160px, 1.1fr) 140px 140px minmax(150px, 1fr) 110px 110px 130px 74px 132px;
   gap: 0.5rem;
   align-items: center;
   padding: 0.40rem 0.72rem;
@@ -1709,6 +1713,11 @@ select.txn-input {
   display: flex;
   justify-content: flex-end;
   gap: 0.35rem;
+  min-width: 0;
+}
+
+.transaction-actions .icon-button {
+  flex-shrink: 0;
 }
 
 .transaction-cleared-cell {
