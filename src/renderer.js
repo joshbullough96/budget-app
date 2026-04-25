@@ -854,6 +854,7 @@ async function loadAccounts() {
     const isActive = acc.active !== false;
     const budgetStatus = acc.offBudget ? 'Off Budget' : 'On Budget';
     const accountStatus = isActive ? `Active &bull; ${budgetStatus}` : `Inactive &bull; ${budgetStatus}`;
+    const accountTypeLabel = getAccountTypeLabel(acc);
     const amountClass = acc.currentBalance >= 0 ? 'positive' : 'negative';
     const descriptionMarkup = acc.description
       ? `<p class="data-card-note">${escapeHtml(acc.description)}</p>`
@@ -869,6 +870,7 @@ async function loadAccounts() {
               </div>
               <div>
                 <h4>${escapeHtml(acc.name)}</h4>
+                <p class="data-card-note">${escapeHtml(accountTypeLabel)}</p>
                 ${descriptionMarkup}
               </div>
             </div>
@@ -2299,8 +2301,15 @@ function resetAccountForm() {
   editingAccountId = null;
   document.getElementById('account-form').reset();
   document.getElementById('acc-id').value = '';
+  document.getElementById('acc-type').value = 'checking';
+  document.getElementById('acc-off').checked = getDefaultOffBudgetForAccountType('checking');
   document.getElementById('acc-active').checked = true;
   setAccountFormMode(false);
+}
+
+function syncAccountTypeDefaultBudgeting() {
+  const selectedType = normalizeAccountType(document.getElementById('acc-type').value);
+  document.getElementById('acc-off').checked = getDefaultOffBudgetForAccountType(selectedType);
 }
 
 function readRecurringFormValues() {
@@ -2899,6 +2908,71 @@ const RECURRING_CADENCE_LABELS = {
   quarterly: 'Quarterly',
   yearly: 'Yearly'
 };
+
+const ACCOUNT_TYPE_LABELS = {
+  cash: 'Cash',
+  checking: 'Checking',
+  creditCard: 'Credit Card',
+  savings: 'Savings',
+  investment: 'Investment',
+  asset: 'Asset'
+};
+
+const ACCOUNT_TYPE_DEFAULT_OFF_BUDGET = {
+  cash: false,
+  checking: false,
+  creditCard: false,
+  savings: false,
+  investment: true,
+  asset: true
+};
+
+function normalizeAccountType(rawType) {
+  if (Object.prototype.hasOwnProperty.call(ACCOUNT_TYPE_LABELS, rawType)) {
+    return rawType;
+  }
+
+  return 'checking';
+}
+
+function getDefaultOffBudgetForAccountType(accountType) {
+  return ACCOUNT_TYPE_DEFAULT_OFF_BUDGET[normalizeAccountType(accountType)];
+}
+
+function inferAccountType(account = {}) {
+  if (account.accountType) {
+    return normalizeAccountType(account.accountType);
+  }
+
+  const normalizedName = String(account.name || '').trim().toLowerCase();
+
+  if (normalizedName.includes('credit')) {
+    return 'creditCard';
+  }
+
+  if (normalizedName.includes('saving')) {
+    return 'savings';
+  }
+
+  if (normalizedName.includes('cash')) {
+    return 'cash';
+  }
+
+  if (normalizedName.includes('invest') || normalizedName.includes('brokerage') || normalizedName.includes('retirement')) {
+    return 'investment';
+  }
+
+  if (normalizedName.includes('asset') || normalizedName.includes('house') || normalizedName.includes('car') || normalizedName.includes('property')) {
+    return 'asset';
+  }
+
+  return 'checking';
+}
+
+function getAccountTypeLabel(account = {}) {
+  const accountType = inferAccountType(account);
+  return ACCOUNT_TYPE_LABELS[accountType] || ACCOUNT_TYPE_LABELS.checking;
+}
 
 function normalizeTargetType(rawType) {
   if (rawType === 'target') {
@@ -4875,6 +4949,7 @@ async function editAccount(accountId) {
   document.getElementById('acc-id').value = account.id;
   document.getElementById('acc-name').value = account.name || '';
   document.getElementById('acc-desc').value = account.description || '';
+  document.getElementById('acc-type').value = inferAccountType(account);
   document.getElementById('acc-start').value = Number(account.startingBalance || 0);
   document.getElementById('acc-current').value = Number(account.currentBalance || 0);
   document.getElementById('acc-off').checked = Boolean(account.offBudget);
@@ -5293,6 +5368,7 @@ window.onload = () => {
     const id = document.getElementById('acc-id').value;
     const name = document.getElementById('acc-name').value;
     const desc = document.getElementById('acc-desc').value;
+    const accountType = normalizeAccountType(document.getElementById('acc-type').value);
     const start = parseFloat(document.getElementById('acc-start').value);
     const current = parseFloat(document.getElementById('acc-current').value);
     const off = document.getElementById('acc-off').checked;
@@ -5302,6 +5378,7 @@ window.onload = () => {
       await cache.update('accounts', { id }, { $set: {
         name,
         description: desc,
+        accountType,
         startingBalance: start,
         currentBalance: current,
         offBudget: off,
@@ -5317,7 +5394,7 @@ window.onload = () => {
     }
 
     const sortOrder = await getNextSortOrder('accounts');
-    const account = new Account(name, desc, start, current, off, sortOrder, active);
+    const account = new Account(name, desc, start, current, off, sortOrder, active, accountType);
     await cache.insert('accounts', account);
     await loadAccounts();
     await refreshDashboard();
@@ -5329,6 +5406,9 @@ window.onload = () => {
   document.getElementById('account-cancel').addEventListener('click', () => {
     resetAccountForm();
     setStatus('Account edit canceled');
+  });
+  document.getElementById('acc-type').addEventListener('change', () => {
+    syncAccountTypeDefaultBudgeting();
   });
   document.getElementById('category-form').addEventListener('submit', async (e) => {
     e.preventDefault();
