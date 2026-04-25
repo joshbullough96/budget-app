@@ -5098,18 +5098,31 @@ async function confirmDeleteCategory(categoryId) {
   const linkedTransactions = transactions.filter(entry => entry.categoryId === categoryId);
   const linkedAllocations = budgetAllocations.filter(entry => entry.categoryId === categoryId);
 
-  if (linkedTransactions.length || linkedAllocations.length) {
+  if (linkedTransactions.length) {
     setStatus(`Can't delete ${category.name} while transactions or allocations still reference it.`);
     return;
   }
 
-  const warning = childSubCategories.length
-    ? `This will also delete ${childSubCategories.length} subcategory(ies). This action cannot be undone.`
-    : 'This action cannot be undone.';
+  const warningParts = [];
+
+  if (childSubCategories.length) {
+    warningParts.push(`This will also delete ${childSubCategories.length} subcategory(ies).`);
+  }
+
+  if (linkedAllocations.length) {
+    warningParts.push(`It will also remove ${linkedAllocations.length} saved budget allocation row(s).`);
+  }
+
+  warningParts.push('This action cannot be undone.');
+  const warning = warningParts.join(' ');
 
   if (!await confirmDestructiveAction(`Delete category "${category.name}"?`, warning)) {
     setStatus(`Kept category: ${category.name}`);
     return;
+  }
+
+  if (linkedAllocations.length) {
+    await cache.remove('budgetAllocations', { categoryId });
   }
 
   if (childSubCategories.length) {
@@ -5145,17 +5158,21 @@ async function confirmDeleteSubCategory(subCategoryId) {
   const linkedTransactions = transactions.filter(entry => entry.subCategoryId === subCategoryId);
   const linkedAllocations = budgetAllocations.filter(entry => entry.subCategoryId === subCategoryId);
 
-  if (linkedTransactions.length || linkedAllocations.length) {
+  if (linkedTransactions.length) {
     setStatus(`Can't delete ${subCategory.name} while transactions or allocations still reference it.`);
     return;
   }
 
   if (!await confirmDestructiveAction(
     `Delete subcategory "${subCategory.name}"?`,
-    'This action cannot be undone.'
+    `${linkedAllocations.length ? `This will also remove ${linkedAllocations.length} saved budget allocation row(s). ` : ''}This action cannot be undone.`
   )) {
     setStatus(`Kept subcategory: ${subCategory.name}`);
     return;
+  }
+
+  if (linkedAllocations.length) {
+    await cache.remove('budgetAllocations', { subCategoryId });
   }
 
   await cache.remove('subCategories', { id: subCategoryId });
