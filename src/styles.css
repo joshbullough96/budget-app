@@ -50,6 +50,11 @@ textarea {
   display: grid;
   grid-template-columns: 252px minmax(0, 1fr);
   min-height: 100vh;
+  transition: grid-template-columns 180ms ease;
+}
+
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 88px minmax(0, 1fr);
 }
 
 .launch-shell {
@@ -438,12 +443,64 @@ textarea {
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent),
     linear-gradient(180deg, #184643, #11312f);
   border-right: 1px solid rgba(255, 255, 255, 0.08);
+  transition: padding 180ms ease;
+}
+
+.sidebar-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 0.8rem;
+  min-width: 0;
+}
+
+.brand-copy {
+  min-width: 0;
+}
+
+.sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  min-width: 2.35rem;
+  min-height: 2.35rem;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f6efe5;
+  flex: 0 0 auto;
+  cursor: pointer;
+  transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease;
+}
+
+.sidebar-toggle:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  transition: transform 180ms ease;
+}
+
+.sidebar-toggle-icon svg {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
 }
 
 .brand-mark {
@@ -505,6 +562,20 @@ h3 {
   transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease;
 }
 
+.nav-button::before {
+  display: none;
+  content: attr(data-short);
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .nav-button:hover,
 .nav-button.active {
   background: rgba(255, 255, 255, 0.08);
@@ -540,6 +611,50 @@ h3 {
 
 .sidebar-card p {
   line-height: 1.55;
+}
+
+.app-shell.sidebar-collapsed .sidebar {
+  padding-left: 0.8rem;
+  padding-right: 0.8rem;
+}
+
+.app-shell.sidebar-collapsed .sidebar-topbar {
+  flex-direction: column;
+  align-items: center;
+}
+
+.app-shell.sidebar-collapsed .brand {
+  justify-content: center;
+}
+
+.app-shell.sidebar-collapsed .brand-copy,
+.app-shell.sidebar-collapsed .sidebar-card {
+  display: none;
+}
+
+.app-shell.sidebar-collapsed .sidebar-toggle-icon {
+  transform: rotate(180deg);
+}
+
+.app-shell.sidebar-collapsed .sidebar-nav {
+  justify-items: center;
+}
+
+.app-shell.sidebar-collapsed .nav-button {
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 3.3rem;
+  padding: 0.55rem;
+}
+
+.app-shell.sidebar-collapsed .nav-button::before {
+  display: inline-flex;
+}
+
+.app-shell.sidebar-collapsed .nav-label,
+.app-shell.sidebar-collapsed .nav-hint {
+  display: none;
 }
 
 .primary-button,

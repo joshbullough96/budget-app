@@ -68,6 +68,7 @@ let budgetState = {
 let reportsState = {
   selectedMonth: ''
 };
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'budgetApp.sidebarCollapsed';
 let sessionState = {
   activeUser: null,
   activeBudget: null
@@ -155,12 +156,57 @@ function updateSessionChrome() {
   document.getElementById('manager-user-menu-shell').classList.toggle('hidden', !sessionState.activeUser);
 }
 
+function isDesktopSidebarLayout() {
+  return window.matchMedia('(min-width: 1081px)').matches;
+}
+
+function readSidebarCollapsedPreference() {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true';
+  } catch (error) {
+    return false;
+  }
+}
+
+function writeSidebarCollapsedPreference(isCollapsed) {
+  try {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, isCollapsed ? 'true' : 'false');
+  } catch (error) {
+    // Ignore storage failures and keep the in-memory state only.
+  }
+}
+
+function setSidebarCollapsed(isCollapsed) {
+  const appShell = document.getElementById('app-shell');
+  const toggleButton = document.getElementById('sidebar-toggle');
+  const shouldCollapse = Boolean(isCollapsed && isDesktopSidebarLayout());
+
+  appShell.classList.toggle('sidebar-collapsed', shouldCollapse);
+  toggleButton.setAttribute('aria-pressed', shouldCollapse ? 'true' : 'false');
+  toggleButton.setAttribute('aria-label', shouldCollapse ? 'Expand navigation' : 'Collapse navigation');
+  toggleButton.title = shouldCollapse ? 'Expand navigation' : 'Collapse navigation';
+}
+
+function initializeSidebarPreference() {
+  setSidebarCollapsed(readSidebarCollapsedPreference());
+}
+
+function toggleSidebarCollapsed() {
+  const nextCollapsed = !document.getElementById('app-shell').classList.contains('sidebar-collapsed');
+  writeSidebarCollapsedPreference(nextCollapsed);
+  setSidebarCollapsed(nextCollapsed);
+}
+
 function showShell(shellId) {
   const shellIds = ['auth-shell', 'manager-shell', 'app-shell'];
 
   shellIds.forEach(id => {
     document.getElementById(id).classList.toggle('hidden', id !== shellId);
   });
+
+  if (shellId === 'app-shell') {
+    setSidebarCollapsed(readSidebarCollapsedPreference());
+  }
 }
 
 function getRelativeDateLabel(value) {
@@ -5605,6 +5651,12 @@ window.onload = () => {
   document.getElementById('app-sign-out').addEventListener('click', async () => {
     await signOut();
   });
+  document.getElementById('sidebar-toggle').addEventListener('click', () => {
+    toggleSidebarCollapsed();
+  });
+  window.addEventListener('resize', () => {
+    setSidebarCollapsed(readSidebarCollapsedPreference());
+  });
   document.addEventListener('click', event => {
     document.querySelectorAll('.user-menu[open]').forEach(menu => {
       if (!menu.contains(event.target)) {
@@ -6057,5 +6109,6 @@ window.onload = () => {
       );
     }
   });
+  initializeSidebarPreference();
   showAuthShell();
 };

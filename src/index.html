@@ -238,36 +238,45 @@
 
   <div id="app-shell" class="app-shell hidden">
     <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-mark">$</div>
-        <div>
+      <div class="sidebar-topbar">
+        <div class="brand">
+          <div class="brand-mark">$</div>
+          <div class="brand-copy">
           <p class="eyebrow">Zero-Based Budget</p>
           <h1>Budget App</h1>
+          </div>
         </div>
+        <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-label="Collapse navigation" aria-pressed="false" title="Collapse navigation">
+          <span class="sidebar-toggle-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M14.7 5.3a1 1 0 0 1 0 1.4L9.41 12l5.29 5.3a1 1 0 1 1-1.41 1.4l-6-6a1 1 0 0 1 0-1.4l6-6a1 1 0 0 1 1.41 0Z"></path>
+            </svg>
+          </span>
+        </button>
       </div>
 
       <nav class="sidebar-nav">
-        <button class="nav-button active" data-section="accounts" onclick="showSection('accounts')">
+        <button class="nav-button active" data-section="accounts" data-short="A" onclick="showSection('accounts')" title="Accounts">
           <span class="nav-label">Accounts</span>
           <span class="nav-hint">Cash flow</span>
         </button>
-        <button class="nav-button" data-section="categories" onclick="showSection('categories')">
+        <button class="nav-button" data-section="categories" data-short="C" onclick="showSection('categories')" title="Categories">
           <span class="nav-label">Categories</span>
           <span class="nav-hint">Plan spending</span>
         </button>
-        <button class="nav-button" data-section="transactions" onclick="showSection('transactions')">
+        <button class="nav-button" data-section="transactions" data-short="T" onclick="showSection('transactions')" title="Transactions">
           <span class="nav-label">Transactions</span>
           <span class="nav-hint">Recent activity</span>
         </button>
-        <button class="nav-button" data-section="transfers" onclick="showSection('transfers')">
+        <button class="nav-button" data-section="transfers" data-short="X" onclick="showSection('transfers')" title="Transfers">
           <span class="nav-label">Transfers</span>
           <span class="nav-hint">Move money</span>
         </button>
-        <button class="nav-button" data-section="budget" onclick="showSection('budget')">
+        <button class="nav-button" data-section="budget" data-short="B" onclick="showSection('budget')" title="Budget">
           <span class="nav-label">Budget</span>
           <span class="nav-hint">Monthly Allocation</span>
         </button>
-        <button class="nav-button" data-section="reports" onclick="showSection('reports')">
+        <button class="nav-button" data-section="reports" data-short="R" onclick="showSection('reports')" title="Reports">
           <span class="nav-label">Reports</span>
           <span class="nav-hint">See trends</span>
         </button>
