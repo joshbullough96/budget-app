@@ -4369,6 +4369,37 @@ function buildCategorySpendBreakdown(selectedMonth, transactions, categoryMap, s
     .sort((left, right) => right.value - left.value);
 }
 
+function buildBudgetAllocationBreakdown(selectedMonth, budgetAllocations, categoryMap, subCategoryMap) {
+  const allocationTotals = new Map();
+
+  budgetAllocations.forEach(allocation => {
+    if (
+      allocation.month !== selectedMonth
+      || Number(allocation.assigned || 0) <= 0
+      || !allocation.categoryId
+      || !isOnBudgetCategoryReference(allocation.categoryId, allocation.subCategoryId, categoryMap, subCategoryMap)
+    ) {
+      return;
+    }
+
+    const amount = Number(allocation.assigned || 0);
+    const category = categoryMap.get(allocation.categoryId);
+    const subCategory = allocation.subCategoryId ? subCategoryMap.get(allocation.subCategoryId) : null;
+    const categoryLabel = category ? category.name : 'Uncategorized';
+    const lineLabel = subCategory ? subCategory.name : 'Category-Level';
+    const key = `${allocation.categoryId}::${allocation.subCategoryId || 'root'}`;
+
+    allocationTotals.set(key, {
+      key,
+      categoryLabel,
+      lineLabel,
+      value: (allocationTotals.get(key)?.value || 0) + amount
+    });
+  });
+
+  return Array.from(allocationTotals.values()).sort((left, right) => right.value - left.value);
+}
+
 function hexToRgb(hexColor) {
   const normalized = String(hexColor || '').replace('#', '');
   if (normalized.length !== 6) {
@@ -4425,6 +4456,67 @@ function describeArc(cx, cy, radius, startAngle, endAngle) {
   const largeArcFlag = endAngle - startAngle > Math.PI ? 1 : 0;
 
   return `M ${startX.toFixed(3)} ${startY.toFixed(3)} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${endX.toFixed(3)} ${endY.toFixed(3)}`;
+}
+
+function buildTreemapRects(items, x, y, width, height) {
+  if (!items.length) {
+    return [];
+  }
+
+  if (items.length === 1) {
+    return [{ item: items[0], x, y, width, height }];
+  }
+
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  let runningTotal = 0;
+  let splitIndex = 0;
+
+  for (let index = 0; index < items.length; index += 1) {
+    runningTotal += items[index].value;
+    splitIndex = index;
+
+    if (runningTotal >= total / 2) {
+      break;
+    }
+  }
+
+  const firstItems = items.slice(0, splitIndex + 1);
+  const secondItems = items.slice(splitIndex + 1);
+
+  if (!secondItems.length) {
+    const splitVertical = width >= height;
+    let cursor = splitVertical ? x : y;
+
+    return firstItems.map((item, index) => {
+      const size = index === firstItems.length - 1
+        ? (splitVertical ? (x + width) - cursor : (y + height) - cursor)
+        : (item.value / total) * (splitVertical ? width : height);
+
+      const rect = splitVertical
+        ? { item, x: cursor, y, width: size, height }
+        : { item, x, y: cursor, width, height: size };
+
+      cursor += size;
+      return rect;
+    });
+  }
+
+  const firstTotal = firstItems.reduce((sum, item) => sum + item.value, 0);
+  const splitVertical = width >= height;
+
+  if (splitVertical) {
+    const firstWidth = width * (firstTotal / total);
+    return [
+      ...buildTreemapRects(firstItems, x, y, firstWidth, height),
+      ...buildTreemapRects(secondItems, x + firstWidth, y, width - firstWidth, height)
+    ];
+  }
+
+  const firstHeight = height * (firstTotal / total);
+  return [
+    ...buildTreemapRects(firstItems, x, y, width, firstHeight),
+    ...buildTreemapRects(secondItems, x, y + firstHeight, width, height - firstHeight)
+  ];
 }
 
 function buildLineChartPath(values, maxValue, chartWidth, chartHeight) {
@@ -4494,7 +4586,7 @@ function renderBudgetVsActualChart(monthlySeries, year) {
   const maxValue = Math.max(1, ...monthlySeries.flatMap(item => [item.budgeted, item.actual]));
 
   return `
-    <article class="report-card report-card-wide">
+    <article class="report-card">
       <div class="report-card-copy">
         <p class="eyebrow">Budget Performance</p>
         <h4>On-Budget Amount vs Actual</h4>
@@ -4514,6 +4606,83 @@ function renderBudgetVsActualChart(monthlySeries, year) {
       <div class="report-legend">
         <span><i class="report-legend-swatch budgeted"></i>Budgeted ${formatCompactCurrency(monthlySeries.reduce((sum, item) => sum + item.budgeted, 0))}</span>
         <span><i class="report-legend-swatch actual"></i>Actual ${formatCompactCurrency(monthlySeries.reduce((sum, item) => sum + item.actual, 0))}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderBudgetAllocationTreemap(selectedMonth, allocationBreakdown) {
+  const total = allocationBreakdown.reduce((sum, item) => sum + item.value, 0);
+
+  if (!total) {
+    return `
+      <article class="report-card">
+        <div class="report-card-copy">
+          <p class="eyebrow">Budget Allocation</p>
+          <h4>Assigned by Category</h4>
+          <p class="panel-hint">No saved budget allocations were found for ${formatMonthLabel(selectedMonth)}.</p>
+        </div>
+        <div class="empty-state compact-empty-state">
+          <h4>No assigned categories yet</h4>
+          <p>Once you save budget allocations for the selected month, this chart will show where the money is going.</p>
+        </div>
+      </article>
+    `;
+  }
+
+  const chartWidth = 480;
+  const chartHeight = 280;
+  const palette = ['#234d3f', '#3868b0', '#d08a3a', '#7d5ab5', '#bf5c4b', '#2f8f66', '#6c7f37', '#a75f41', '#4a8f90', '#5f6bc2'];
+  const rects = buildTreemapRects(allocationBreakdown, 0, 0, chartWidth, chartHeight)
+    .map((rect, index) => ({
+      ...rect,
+      color: palette[index % palette.length],
+      percent: (rect.item.value / total) * 100
+    }));
+
+  return `
+    <article class="report-card">
+      <div class="report-card-copy">
+        <p class="eyebrow">Budget Allocation</p>
+        <h4>Assigned by Category</h4>
+        <p class="panel-hint">A proportional view of saved budget allocations for ${formatMonthLabel(selectedMonth)}.</p>
+      </div>
+      <div class="report-treemap-layout">
+        <div class="report-treemap-shell">
+          <svg class="report-treemap" viewBox="0 0 ${chartWidth} ${chartHeight}" role="img" aria-label="Treemap showing budget allocation by category for ${escapeHtml(formatMonthLabel(selectedMonth))}">
+            ${rects.map(rect => `
+              <g>
+                <rect
+                  x="${rect.x.toFixed(2)}"
+                  y="${rect.y.toFixed(2)}"
+                  width="${Math.max(0, rect.width - 2).toFixed(2)}"
+                  height="${Math.max(0, rect.height - 2).toFixed(2)}"
+                  rx="14"
+                  ry="14"
+                  fill="${rect.color}"
+                  class="report-treemap-rect"
+                >
+                  <title>${escapeHtml(`${rect.item.categoryLabel}${rect.item.lineLabel !== 'Category-Level' ? ` / ${rect.item.lineLabel}` : ''}: ${formatCurrency(rect.item.value)} (${rect.percent.toFixed(1)}%)`)}</title>
+                </rect>
+                ${rect.width >= 90 && rect.height >= 46 ? `
+                  <text x="${(rect.x + 14).toFixed(2)}" y="${(rect.y + 22).toFixed(2)}" class="report-treemap-label">${escapeHtml(rect.item.categoryLabel)}</text>
+                  <text x="${(rect.x + 14).toFixed(2)}" y="${(rect.y + 41).toFixed(2)}" class="report-treemap-value">${escapeHtml(`${formatCompactCurrency(rect.item.value)} · ${rect.percent.toFixed(1)}%`)}</text>
+                ` : ''}
+              </g>
+            `).join('')}
+          </svg>
+        </div>
+        <div class="report-treemap-legend">
+          ${rects.slice(0, 8).map(rect => `
+            <div class="report-treemap-legend-item">
+              <span class="report-treemap-legend-color" style="background:${rect.color}"></span>
+              <div>
+                <strong>${escapeHtml(rect.item.categoryLabel)}</strong>
+                <p>${formatCurrency(rect.item.value)} | ${rect.percent.toFixed(1)}%</p>
+              </div>
+            </div>
+          `).join('')}
+        </div>
       </div>
     </article>
   `;
@@ -4669,10 +4838,12 @@ async function loadReports() {
   const categoryMap = new Map(categories.map(category => [category.id, category]));
   const subCategoryMap = new Map(subCategories.map(subCategory => [subCategory.id, subCategory]));
   const monthlySeries = buildMonthlyReportSeries(reportYear, transactions, budgetAllocations, categoryMap, subCategoryMap);
+  const budgetAllocationBreakdown = buildBudgetAllocationBreakdown(selectedMonth, budgetAllocations, categoryMap, subCategoryMap);
   const categorySpendBreakdown = buildCategorySpendBreakdown(selectedMonth, transactions, categoryMap, subCategoryMap);
 
   reportsView.innerHTML = `
     ${renderBudgetVsActualChart(monthlySeries, reportYear)}
+    ${renderBudgetAllocationTreemap(selectedMonth, budgetAllocationBreakdown)}
     ${renderInflowOutflowChart(monthlySeries)}
     ${renderCategorySpendPieChart(selectedMonth, categorySpendBreakdown)}
   `;
