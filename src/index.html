@@ -486,6 +486,7 @@
                 <p class="eyebrow">Transactions</p>
                 <h3>Activity table</h3>
                 <p class="panel-hint">Add, edit, delete, or import transactions inline.</p>
+                <p class="panel-hint subtle table-shortcut-tip">Tip: use ctrl+k to save the transaction.</p>
               </div>
               <div class="transactions-toolbar">
                 <div class="transactions-import-panel">
@@ -496,14 +497,9 @@
                     </div>
                     <p class="panel-hint subtle transactions-import-hint">Required CSV columns: date, account, payee, category, inflow, outflow. Optional: subcategory, memo. Leave one of inflow or outflow blank on each row.</p>
                   </div>
-                  <div class="table-toolbar-actions">
-                    <button type="button" id="transaction-export-button" class="secondary-button compact-button">Export CSV</button>
-                    <button type="button" id="transaction-filters-toggle" class="secondary-button compact-button">Filters</button>
-                  </div>
                 </div>
               </div>
             </div>
-            <p class="panel-hint subtle table-shortcut-tip">Tip: use ctrl+k to save the transaction.</p>
             <div id="transactions-list" class="transaction-table-shell"></div>
           </section>
         </div>
@@ -515,15 +511,9 @@
                 <p class="eyebrow">Transfers</p>
                 <h3>Move money between accounts</h3>
                 <p class="panel-hint">Schedule or complete transfers, then keep both sides of the ledger in sync.</p>
+                <p class="panel-hint subtle table-shortcut-tip">Tip: use ctrl+k to save the transaction.</p>
               </div>
             </div>
-            <div class="transfer-grid-toolbar">
-              <div class="table-toolbar-actions">
-                <button type="button" id="transfer-export-button" class="secondary-button compact-button">Export CSV</button>
-                <button type="button" id="transfer-filters-toggle" class="secondary-button compact-button">Filters</button>
-              </div>
-            </div>
-            <p class="panel-hint subtle table-shortcut-tip">Tip: use ctrl+k to save the transaction.</p>
             <div id="transfers-list" class="transfer-table-shell"></div>
           </section>
         </div>

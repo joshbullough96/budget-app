@@ -1122,6 +1122,15 @@ async function loadTransactions() {
     : '';
 
   list.innerHTML = `
+      <div class="ledger-shell-header">
+        <div class="ledger-shell-header-copy">
+          <span>Table Controls</span>
+        </div>
+        <div class="table-toolbar-actions segmented-toolbar ledger-toolbar">
+          <button type="button" id="transaction-export-button" class="secondary-button compact-button">Export CSV</button>
+          <button type="button" id="transaction-filters-toggle" class="secondary-button compact-button">Filters</button>
+        </div>
+      </div>
       <div class="transaction-table">
         <div class="transaction-row transaction-head">
           <div><button type="button" class="transaction-sort-button" data-sort-key="date">Date${getTableSortIndicator(transactionTableState, 'date')}</button></div>
@@ -1208,6 +1217,15 @@ async function loadTransfers() {
     : '';
 
   list.innerHTML = `
+    <div class="ledger-shell-header">
+      <div class="ledger-shell-header-copy">
+        <span>Table Controls</span>
+      </div>
+      <div class="table-toolbar-actions segmented-toolbar ledger-toolbar">
+        <button type="button" id="transfer-export-button" class="secondary-button compact-button">Export CSV</button>
+        <button type="button" id="transfer-filters-toggle" class="secondary-button compact-button">Filters</button>
+      </div>
+    </div>
     <div class="transfer-table">
       <div class="transfer-row transfer-head">
         <div><button type="button" class="transaction-sort-button" data-table-type="transfers" data-sort-key="date">Date${getTableSortIndicator(transferTableState, 'date')}</button></div>
@@ -5901,6 +5919,18 @@ window.onload = () => {
       await submitTransactionEditorRow(editorRow);
     });
     document.getElementById('transactions-list').addEventListener('click', (e) => {
+      if (e.target.closest('#transaction-filters-toggle')) {
+        transactionTableState.filtersVisible = !transactionTableState.filtersVisible;
+        transactionFilterFocusState = null;
+        loadTransactions();
+        return;
+      }
+
+      if (e.target.closest('#transaction-export-button')) {
+        exportTransactionsCsv();
+        return;
+      }
+
       const sortButton = e.target.closest('.transaction-sort-button');
 
       if (sortButton) {
@@ -5923,16 +5953,8 @@ window.onload = () => {
         loadTransactions();
       }
     });
-    document.getElementById('transaction-filters-toggle').addEventListener('click', () => {
-      transactionTableState.filtersVisible = !transactionTableState.filtersVisible;
-      transactionFilterFocusState = null;
-      loadTransactions();
-    });
     document.getElementById('transaction-import-button').addEventListener('click', async () => {
       await importTransactionsFromCsv();
-    });
-    document.getElementById('transaction-export-button').addEventListener('click', async () => {
-      await exportTransactionsCsv();
     });
     document.getElementById('category-export-button').addEventListener('click', async () => {
       await exportCategoriesCsv();
@@ -5980,6 +6002,18 @@ window.onload = () => {
       await submitTransferEditorRow(editorRow);
     });
     document.getElementById('transfers-list').addEventListener('click', e => {
+      if (e.target.closest('#transfer-filters-toggle')) {
+        transferTableState.filtersVisible = !transferTableState.filtersVisible;
+        transferFilterFocusState = null;
+        loadTransfers();
+        return;
+      }
+
+      if (e.target.closest('#transfer-export-button')) {
+        exportTransfersCsv();
+        return;
+      }
+
       const sortButton = e.target.closest('.transaction-sort-button[data-table-type="transfers"]');
 
       if (sortButton) {
@@ -6001,14 +6035,6 @@ window.onload = () => {
         transferFilterFocusState = null;
         loadTransfers();
       }
-    });
-    document.getElementById('transfer-filters-toggle').addEventListener('click', () => {
-      transferTableState.filtersVisible = !transferTableState.filtersVisible;
-      transferFilterFocusState = null;
-      loadTransfers();
-    });
-    document.getElementById('transfer-export-button').addEventListener('click', async () => {
-      await exportTransfersCsv();
     });
   document.getElementById('budget-month-prev').addEventListener('click', async () => {
     budgetState.selectedMonth = shiftMonthValue(budgetState.selectedMonth || getCurrentMonthValue(), -1);
