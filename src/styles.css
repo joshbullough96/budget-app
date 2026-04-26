@@ -678,11 +678,59 @@ h3 {
 }
 
 .topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) minmax(0, 2fr);
   align-items: flex-start;
-  justify-content: space-between;
   gap: 0.8rem;
   margin-bottom: 0.7rem;
+}
+
+.topbar-title-block {
+  min-width: 0;
+}
+
+.topbar-summary-card {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  align-items: stretch;
+  padding: 0.7rem 0.78rem;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+}
+
+.topbar-summary-item {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+  padding: 0.1rem 0.2rem;
+}
+
+.topbar-summary-item + .topbar-summary-item {
+  border-left: 1px solid rgba(22, 51, 49, 0.08);
+  padding-left: 0.7rem;
+}
+
+.topbar-summary-item strong {
+  font-family: Georgia, "Palatino Linotype", serif;
+  font-size: clamp(1.2rem, 1.75vw, 1.7rem);
+  line-height: 1.02;
+}
+
+.topbar-summary-item-cash strong {
+  font-size: clamp(1.35rem, 2.05vw, 1.95rem);
+}
+
+.topbar-summary-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.25;
 }
 
 .topbar-session {
@@ -690,7 +738,7 @@ h3 {
   align-items: center;
   justify-content: space-between;
   gap: 0.9rem;
-  min-width: 17rem;
+  min-width: 0;
   padding: 0.72rem 0.72rem 0.72rem 0.9rem;
   border: 1px solid rgba(22, 51, 49, 0.08);
   border-radius: 18px;
@@ -2751,6 +2799,21 @@ select.txn-input {
   .icon-actions {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .topbar {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar-summary-card {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar-summary-item + .topbar-summary-item {
+    border-left: none;
+    border-top: 1px solid rgba(22, 51, 49, 0.08);
+    padding-left: 0.2rem;
+    padding-top: 0.55rem;
   }
 
   .button-row > * {

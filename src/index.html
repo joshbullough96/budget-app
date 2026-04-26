@@ -291,11 +291,28 @@
 
     <main class="main-panel">
       <header class="topbar">
-        <div>
+        <div class="topbar-title-block">
           <p class="eyebrow">Your Budgeting Tool</p>
           <h2 id="section-title">Accounts Overview</h2>
           <p id="section-subtitle" class="section-subtitle">Track the cash you have available right now.</p>
         </div>
+        <article class="topbar-summary-card balance-card">
+          <div class="topbar-summary-item topbar-summary-item-cash">
+            <p class="hero-label">Total Cash</p>
+            <strong id="total-cash">$0.00</strong>
+            <p class="topbar-summary-copy">Across active accounts.</p>
+          </div>
+          <div class="topbar-summary-item">
+            <p class="hero-label">Accounts</p>
+            <strong id="account-count">0</strong>
+            <p class="topbar-summary-copy">Active</p>
+          </div>
+          <div class="topbar-summary-item">
+            <p class="hero-label">Categories</p>
+            <strong id="category-count">0</strong>
+            <p id="category-summary" class="topbar-summary-copy">0 subcategories ready for assignment.</p>
+          </div>
+        </article>
         <div class="topbar-session">
           <div class="topbar-session-copy">
             <p class="eyebrow">Active Budget</p>
@@ -318,24 +335,6 @@
           </details>
         </div>
         </header>
-
-      <section class="hero-grid">
-        <article class="hero-card balance-card">
-          <p class="hero-label">Total Cash</p>
-          <h3 id="total-cash">$0.00</h3>
-          <p class="hero-copy">Across all active accounts (including off-budget accounts).</p>
-        </article>
-        <article class="hero-card">
-          <p class="hero-label">Active Accounts</p>
-          <h3 id="account-count">0</h3>
-          <p class="hero-copy">Connected places your money lives.</p>
-        </article>
-        <article class="hero-card">
-          <p class="hero-label">Budget Categories</p>
-          <h3 id="category-count">0</h3>
-          <p id="category-summary" class="hero-copy">0 subcategories ready for assignment.</p>
-        </article>
-      </section>
 
       <div id="accounts" class="section active">
         <div class="section-grid">
