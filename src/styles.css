@@ -2078,6 +2078,7 @@ select.txn-input {
 }
 
 .report-treemap-shell {
+  padding: 3px;
   border-radius: 18px;
   overflow: hidden;
   background: linear-gradient(180deg, rgba(250, 247, 240, 0.92), rgba(243, 238, 227, 0.96));
