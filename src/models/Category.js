@@ -7,7 +7,9 @@ class Category {
     sortOrder = null,
     targetType = '',
     targetAmount = 0,
-    recurringConfig = {}
+    recurringConfig = {},
+    bucketMode = 'spend',
+    savingsGoalAmount = 0
   ) {
     this.id = Date.now().toString();
     this.name = name;
@@ -21,6 +23,8 @@ class Category {
     this.recurringEnabled = recurringConfig.enabled === 'TRUE' || recurringConfig.enabled === true;
     this.recurringAmount = parseFloat(recurringConfig.amount) || 0;
     this.recurringCadence = recurringConfig.cadence || 'monthly';
+    this.bucketMode = bucketMode === 'save' ? 'save' : 'spend';
+    this.savingsGoalAmount = parseFloat(savingsGoalAmount) || 0;
   }
 }
 

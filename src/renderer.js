@@ -927,8 +927,10 @@ async function loadCategories() {
       const categoryStatus = cat.offBudget ? 'Off Budget' : 'On Budget';
       const categoryTarget = getBudgetTarget(cat);
       const categoryRecurring = getBudgetRecurring(cat);
+      const categorySavingsLabel = getSavingsBucketLabel(cat);
       const isExpanded = expandedCategoryIds.has(cat.id);
       const categoryMeta = [
+        categorySavingsLabel,
         categoryTarget.type ? `${TARGET_TYPE_LABELS[categoryTarget.type].toLowerCase()} target` : '',
         categoryTarget.amount ? formatCurrency(categoryTarget.amount) : '',
         categoryRecurring.enabled ? `Recurring ${RECURRING_CADENCE_LABELS[categoryRecurring.cadence].toLowerCase()} ${formatCurrency(categoryRecurring.amount)}` : ''
@@ -955,6 +957,7 @@ async function loadCategories() {
               </div>
             </div>
             <div class="sub-item-actions">
+              ${isSavingsBucket(subCategory) ? '<div class="pill savings">Savings</div>' : ''}
               <div class="pill ${subCategory.offBudget ? 'warn' : ''}">${getGoalLabel(getBudgetTarget(subCategory).type, getBudgetTarget(subCategory).amount)}</div>
               <div class="icon-actions">
                 <button type="button" class="icon-button" onclick="editSubCategory('${subCategory.id}')" aria-label="Edit subcategory" title="Edit subcategory">
@@ -976,6 +979,7 @@ async function loadCategories() {
             </div>
           </div>
           <div class="sub-item-actions">
+            ${isSavingsBucket(cat) ? '<div class="pill savings">Savings</div>' : ''}
             <div class="pill ${cat.offBudget ? 'warn' : ''}">${getGoalLabel(categoryTarget.type, categoryTarget.amount)}</div>
           </div>
         </div>
@@ -1005,8 +1009,9 @@ async function loadCategories() {
                   ${categoryBudgetMarkup}
                 </div>
               </div>
-            </div>
+          </div>
           <div class="card-header-actions">
+            ${isSavingsBucket(cat) ? '<div class="pill savings">Savings</div>' : ''}
             <div class="pill ${cat.offBudget ? 'warn' : ''}">${categoryStatus}</div>
             <div class="icon-actions">
               <button type="button" class="secondary-button compact-button" onclick="startAddSubCategory('${cat.id}')">+ Subcategory</button>
@@ -1266,7 +1271,8 @@ function buildBudgetEntryDefinitions(categories, subCategories, transactions = [
       const visibleSubCategories = sortItemsForDisplay(
         subCategories.filter(subCategory => subCategory.categoryId === category.id && !subCategory.offBudget)
       );
-      const needsCategoryFallbackRow = visibleSubCategories.length && (
+      const shouldIncludeCategorySavingsRow = visibleSubCategories.length && isSavingsBucket(category);
+      const needsCategoryFallbackRow = !shouldIncludeCategorySavingsRow && visibleSubCategories.length && (
         transactions.some(transaction => transaction.categoryId === category.id && !transaction.subCategoryId)
         || budgetAllocations.some(allocation => allocation.categoryId === category.id && !allocation.subCategoryId)
       );
@@ -1280,6 +1286,8 @@ function buildBudgetEntryDefinitions(categories, subCategories, transactions = [
               note: subCategory.note || '',
               target: getBudgetTarget(subCategory),
               recurring: getBudgetRecurring(subCategory),
+              bucketMode: getBudgetBucketMode(subCategory),
+              savingsGoalAmount: getSavingsGoalAmount(subCategory),
               isCategoryFallback: false
             }))
           : [{
@@ -1291,8 +1299,26 @@ function buildBudgetEntryDefinitions(categories, subCategories, transactions = [
               note: category.note || '',
               target: getBudgetTarget(category),
               recurring: getBudgetRecurring(category),
+              bucketMode: getBudgetBucketMode(category),
+              savingsGoalAmount: getSavingsGoalAmount(category),
               isCategoryFallback: true
             }];
+
+        if (shouldIncludeCategorySavingsRow) {
+          rows.unshift({
+            entryKey: buildBudgetEntryKey(category.id, null),
+            categoryId: category.id,
+            subCategoryId: null,
+            categoryName: category.name,
+            subCategoryName: 'Category Savings Bucket',
+            note: category.note || '',
+            target: getBudgetTarget(category),
+            recurring: getBudgetRecurring(category),
+            bucketMode: getBudgetBucketMode(category),
+            savingsGoalAmount: getSavingsGoalAmount(category),
+            isCategoryFallback: true
+          });
+        }
 
         if (needsCategoryFallbackRow) {
           rows.unshift({
@@ -1301,9 +1327,11 @@ function buildBudgetEntryDefinitions(categories, subCategories, transactions = [
             subCategoryId: null,
             categoryName: category.name,
             subCategoryName: 'Category-Level Activity',
-            note: 'Legacy or uncategorized entries in this group',
+            note: '',
             target: getBudgetTarget(category),
             recurring: getBudgetRecurring(category),
+            bucketMode: getBudgetBucketMode(category),
+            savingsGoalAmount: getSavingsGoalAmount(category),
             isCategoryFallback: true
           });
         }
@@ -1601,6 +1629,7 @@ function buildBudgetPresentationModel(context, month, draftAllocations) {
       const activity = getActivityAmountForEntry(context, month, entry);
       const available = carryover + assigned + activity;
       const isDirty = isBudgetEntryDirty(context, month, entry, draftAllocations);
+      const savingsStatus = buildSavingsBucketStatus(available, entry.savingsGoalAmount);
 
       return {
         ...entry,
@@ -1612,7 +1641,8 @@ function buildBudgetPresentationModel(context, month, draftAllocations) {
         monthlyNote,
         isDirty,
         activity,
-        available
+        available,
+        savingsStatus
       };
     });
     const totals = rows.reduce((sum, row) => ({
@@ -1711,18 +1741,17 @@ function renderBudgetMonthGrid(month, model, draftMeta, isSelected = false) {
               ${model.groups.length ? group.rows.map(row => `
                 <div class="budget-row-stack">
                   <div class="budget-row" data-budget-row-key="${month}::${row.entryKey}" data-entry-key="${row.entryKey}" data-month="${month}" data-category-id="${group.id}">
-                    <div class="budget-line-copy">
+                    <div class="budget-line-copy" title="${escapeHtml(buildBudgetRowMetaText(row))}">
                       <div class="budget-line-main">
                         <strong>${escapeHtml(row.subCategoryName || row.categoryName)}</strong>
+                        ${row.bucketMode === 'save' ? '<span class="budget-bucket-badge">Savings</span>' : ''}
                       </div>
-                      <p>${escapeHtml(
-                        [
-                            row.target.type ? `${TARGET_TYPE_LABELS[row.target.type]} target` : '',
-                            row.target.amount ? formatCurrency(row.target.amount) : '',
-                            row.recurring.enabled ? `Recurring ${RECURRING_CADENCE_LABELS[row.recurring.cadence].toLowerCase()} ${formatCurrency(row.recurring.amount)}` : '',
-                            row.note
-                          ].filter(Boolean).join(' | ') || (row.isCategoryFallback ? 'Category-level budget row' : 'Flexible')
-                        )}</p>
+                      ${row.bucketMode === 'save' && row.savingsGoalAmount > 0 ? `
+                        <div class="budget-savings-progress-copy">
+                          <span>Progress</span>
+                          <strong>${Math.round(row.savingsStatus.progressPercent)}%</strong>
+                        </div>
+                      ` : ''}
                     </div>
                     <div class="amount budget-row-carryover">${formatCurrency(row.carryover)}</div>
                     <div class="budget-assigned-field">
@@ -2326,6 +2355,28 @@ function populateRecurringFormValues(recurring = {}) {
   document.getElementById('cat-recurring-cadence').value = normalizeRecurringCadence(recurring.cadence);
 }
 
+function readSavingsBucketFormValues() {
+  const bucketMode = normalizeBudgetBucketMode(document.getElementById('cat-bucket-mode').value);
+  const savingsGoalAmount = parseFloat(document.getElementById('cat-savings-goal-amount').value) || 0;
+
+  return {
+    bucketMode,
+    savingsGoalAmount: bucketMode === 'save' ? savingsGoalAmount : 0
+  };
+}
+
+function populateSavingsBucketFormValues(record = {}) {
+  document.getElementById('cat-bucket-mode').value = getBudgetBucketMode(record);
+  document.getElementById('cat-savings-goal-amount').value = getSavingsGoalAmount(record) || '';
+  syncSavingsBucketFormState();
+}
+
+function syncSavingsBucketFormState() {
+  const savingsGoalField = document.getElementById('cat-savings-goal-field');
+  const isSavingsMode = normalizeBudgetBucketMode(document.getElementById('cat-bucket-mode').value) === 'save';
+  savingsGoalField.classList.toggle('hidden', !isSavingsMode);
+}
+
 function setCategoryFormMode(mode, context = {}) {
   categoryFormMode = mode;
   document.getElementById('category-form-mode').value = mode;
@@ -2404,6 +2455,7 @@ function resetCategoryForm() {
   document.getElementById('subcat-fields').classList.remove('hidden');
   document.getElementById('subcat-name-field').classList.remove('hidden');
   document.getElementById('subcat-name').required = false;
+  populateSavingsBucketFormValues({ bucketMode: 'spend', savingsGoalAmount: 0 });
   populateRecurringFormValues({ enabled: false, amount: 0, cadence: 'monthly' });
   setCategoryFormMode('create-category');
 }
@@ -2909,6 +2961,11 @@ const RECURRING_CADENCE_LABELS = {
   yearly: 'Yearly'
 };
 
+const BUDGET_BUCKET_MODE_LABELS = {
+  spend: 'Spending',
+  save: 'Savings'
+};
+
 const ACCOUNT_TYPE_LABELS = {
   cash: 'Cash',
   checking: 'Checking',
@@ -2994,6 +3051,10 @@ function normalizeRecurringCadence(rawCadence) {
   return 'monthly';
 }
 
+function normalizeBudgetBucketMode(rawMode) {
+  return rawMode === 'save' ? 'save' : 'spend';
+}
+
 function getDaysInMonth(monthValue) {
   const [year, month] = monthValue.split('-').map(Number);
   return new Date(year, month, 0).getDate();
@@ -3029,6 +3090,46 @@ function getBudgetTarget(record) {
   };
 }
 
+function getBudgetBucketMode(record) {
+  return normalizeBudgetBucketMode(record?.bucketMode);
+}
+
+function isSavingsBucket(record) {
+  return getBudgetBucketMode(record) === 'save';
+}
+
+function getSavingsGoalAmount(record) {
+  return Number(record?.savingsGoalAmount || 0);
+}
+
+function buildSavingsBucketStatus(savedAmount, goalAmount) {
+  const normalizedSavedAmount = Number(savedAmount || 0);
+  const normalizedGoalAmount = Number(goalAmount || 0);
+  const remainingAmount = Math.max(0, normalizedGoalAmount - normalizedSavedAmount);
+  const progressPercent = normalizedGoalAmount > 0
+    ? Math.min(100, Math.max(0, (normalizedSavedAmount / normalizedGoalAmount) * 100))
+    : 0;
+
+  return {
+    savedAmount: normalizedSavedAmount,
+    goalAmount: normalizedGoalAmount,
+    remainingAmount,
+    progressPercent
+  };
+}
+
+function buildBudgetRowMetaText(row) {
+  return [
+    row.bucketMode === 'save' && row.savingsGoalAmount > 0 ? `Goal ${formatCurrency(row.savingsGoalAmount)}` : '',
+    row.bucketMode === 'save' ? `Saved ${formatCurrency(row.savingsStatus.savedAmount)}` : '',
+    row.bucketMode === 'save' && row.savingsGoalAmount > 0 ? `To go ${formatCurrency(row.savingsStatus.remainingAmount)}` : '',
+    row.target.type ? `${TARGET_TYPE_LABELS[row.target.type]} target` : '',
+    row.target.amount ? formatCurrency(row.target.amount) : '',
+    row.recurring.enabled ? `Recurring ${RECURRING_CADENCE_LABELS[row.recurring.cadence].toLowerCase()} ${formatCurrency(row.recurring.amount)}` : '',
+    row.note
+  ].filter(Boolean).join(' | ');
+}
+
 function getGoalLabel(goalType, goalAmount) {
   const normalizedType = normalizeTargetType(goalType);
 
@@ -3041,6 +3142,17 @@ function getGoalLabel(goalType, goalAmount) {
   }
 
   return 'Flexible';
+}
+
+function getSavingsBucketLabel(record) {
+  if (!isSavingsBucket(record)) {
+    return '';
+  }
+
+  const goalAmount = getSavingsGoalAmount(record);
+  return goalAmount > 0
+    ? `Savings goal ${formatCurrency(goalAmount)}`
+    : 'Savings bucket';
 }
 
 function getSubCategoryMeta(subCategory) {
@@ -3059,6 +3171,12 @@ function getSubCategoryMeta(subCategory) {
 
   if (recurringLabel) {
     segments.push(recurringLabel);
+  }
+
+  const savingsLabel = getSavingsBucketLabel(subCategory);
+
+  if (savingsLabel) {
+    segments.push(savingsLabel);
   }
 
   if (subCategory.note) {
@@ -4108,6 +4226,8 @@ async function exportCategoriesCsv() {
       '',
       'Category',
       category.offBudget ? 'Off Budget' : 'On Budget',
+      BUDGET_BUCKET_MODE_LABELS[getBudgetBucketMode(category)] || BUDGET_BUCKET_MODE_LABELS.spend,
+      Number(getSavingsGoalAmount(category) || 0).toFixed(2),
       categoryTarget.type ? (TARGET_TYPE_LABELS[categoryTarget.type] || categoryTarget.type) : '',
       Number(categoryTarget.amount || 0).toFixed(2),
       categoryRecurring.enabled ? 'Yes' : 'No',
@@ -4127,6 +4247,8 @@ async function exportCategoriesCsv() {
         subCategory.name,
         'Subcategory',
         subCategory.offBudget ? 'Off Budget' : 'On Budget',
+        BUDGET_BUCKET_MODE_LABELS[getBudgetBucketMode(subCategory)] || BUDGET_BUCKET_MODE_LABELS.spend,
+        Number(getSavingsGoalAmount(subCategory) || 0).toFixed(2),
         target.type ? (TARGET_TYPE_LABELS[target.type] || target.type) : '',
         Number(target.amount || 0).toFixed(2),
         recurring.enabled ? 'Yes' : 'No',
@@ -4148,7 +4270,7 @@ async function exportCategoriesCsv() {
 
   downloadCsvFile(
     buildCsvFileName('categories'),
-    ['Category', 'Subcategory', 'Line Type', 'Budget Status', 'Target Type', 'Target Amount', 'Recurring Enabled', 'Recurring Cadence', 'Recurring Amount', 'Note', 'Sort Order', 'Id'],
+    ['Category', 'Subcategory', 'Line Type', 'Budget Status', 'Bucket Type', 'Savings Goal Amount', 'Target Type', 'Target Amount', 'Recurring Enabled', 'Recurring Cadence', 'Recurring Amount', 'Note', 'Sort Order', 'Id'],
     rows
   );
 
@@ -5018,6 +5140,7 @@ async function editCategory(categoryId) {
   document.getElementById('subcat-name').value = '';
   document.getElementById('cat-goal-type').value = getBudgetTarget(category).type;
   document.getElementById('cat-goal-amount').value = Number(category.targetAmount ?? category.goalAmount ?? 0) || '';
+  populateSavingsBucketFormValues(category);
   populateRecurringFormValues(getBudgetRecurring(category));
   document.getElementById('cat-note').value = category.note || '';
   document.getElementById('cat-off-budget').checked = Boolean(category.offBudget);
@@ -5042,6 +5165,7 @@ async function startAddSubCategory(categoryId) {
   document.getElementById('subcat-name').value = '';
   document.getElementById('cat-goal-type').value = '';
   document.getElementById('cat-goal-amount').value = '';
+  populateSavingsBucketFormValues({ bucketMode: 'spend', savingsGoalAmount: 0 });
   populateRecurringFormValues({ enabled: false, amount: 0, cadence: 'monthly' });
   document.getElementById('cat-note').value = '';
   document.getElementById('cat-off-budget').checked = Boolean(category.offBudget);
@@ -5069,6 +5193,7 @@ async function editSubCategory(subCategoryId) {
   document.getElementById('subcat-name').value = subCategory.name || '';
   document.getElementById('cat-goal-type').value = getBudgetTarget(subCategory).type;
   document.getElementById('cat-goal-amount').value = Number(subCategory.targetAmount ?? subCategory.goalAmount ?? 0) || '';
+  populateSavingsBucketFormValues(subCategory);
   populateRecurringFormValues(getBudgetRecurring(subCategory));
   document.getElementById('cat-note').value = subCategory.note || '';
   document.getElementById('cat-off-budget').checked = Boolean(subCategory.offBudget);
@@ -5427,6 +5552,9 @@ window.onload = () => {
   document.getElementById('acc-type').addEventListener('change', () => {
     syncAccountTypeDefaultBudgeting();
   });
+  document.getElementById('cat-bucket-mode').addEventListener('change', () => {
+    syncSavingsBucketFormState();
+  });
   document.getElementById('category-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const mode = document.getElementById('category-form-mode').value;
@@ -5437,6 +5565,7 @@ window.onload = () => {
     const targetType = normalizeTargetType(document.getElementById('cat-goal-type').value);
     const targetAmount = parseFloat(document.getElementById('cat-goal-amount').value) || 0;
     const recurring = readRecurringFormValues();
+    const savingsBucket = readSavingsBucketFormValues();
     const note = document.getElementById('cat-note').value;
     const offBudget = document.getElementById('cat-off-budget').checked;
 
@@ -5450,9 +5579,11 @@ window.onload = () => {
           recurringEnabled: recurring.enabled,
           recurringAmount: recurring.amount,
           recurringCadence: recurring.cadence,
+          bucketMode: savingsBucket.bucketMode,
+          savingsGoalAmount: savingsBucket.savingsGoalAmount,
           note,
           offBudget
-        } });
+      } });
       await loadCategories();
       await loadTransactions();
       await loadBudgetView();
@@ -5464,7 +5595,18 @@ window.onload = () => {
 
     if (mode === 'add-subcategory') {
       const sortOrder = await getNextGroupedSortOrder('subCategories', 'categoryId', categoryId);
-      const subCategory = new SubCategory(categoryId, subCategoryName, targetType, targetAmount, note, offBudget, sortOrder, recurring);
+      const subCategory = new SubCategory(
+        categoryId,
+        subCategoryName,
+        targetType,
+        targetAmount,
+        note,
+        offBudget,
+        sortOrder,
+        recurring,
+        savingsBucket.bucketMode,
+        savingsBucket.savingsGoalAmount
+      );
       await cache.insert('subCategories', subCategory);
       await loadCategories();
       await loadTransactions();
@@ -5484,6 +5626,8 @@ window.onload = () => {
         recurringEnabled: recurring.enabled,
         recurringAmount: recurring.amount,
         recurringCadence: recurring.cadence,
+        bucketMode: savingsBucket.bucketMode,
+        savingsGoalAmount: savingsBucket.savingsGoalAmount,
         note,
         offBudget
       } });
@@ -5504,12 +5648,25 @@ window.onload = () => {
         sortOrder,
         shouldApplyBudgetSettingsToCategory ? targetType : '',
         shouldApplyBudgetSettingsToCategory ? targetAmount : 0,
-        shouldApplyBudgetSettingsToCategory ? recurring : { enabled: false, amount: 0, cadence: 'monthly' }
+        shouldApplyBudgetSettingsToCategory ? recurring : { enabled: false, amount: 0, cadence: 'monthly' },
+        shouldApplyBudgetSettingsToCategory ? savingsBucket.bucketMode : 'spend',
+        shouldApplyBudgetSettingsToCategory ? savingsBucket.savingsGoalAmount : 0
       );
     const savedCategory = await cache.insert('categories', category);
 
     if (subCategoryName) {
-      const subCategory = new SubCategory(savedCategory.id, subCategoryName, targetType, targetAmount, note, offBudget, null, recurring);
+      const subCategory = new SubCategory(
+        savedCategory.id,
+        subCategoryName,
+        targetType,
+        targetAmount,
+        note,
+        offBudget,
+        null,
+        recurring,
+        savingsBucket.bucketMode,
+        savingsBucket.savingsGoalAmount
+      );
       await cache.insert('subCategories', subCategory);
     }
 

@@ -420,6 +420,13 @@
                   </label>
                 <div class="form-row">
                   <label>
+                    <span>Bucket Type</span>
+                    <select id="cat-bucket-mode">
+                      <option value="spend">Spending</option>
+                      <option value="save">Savings</option>
+                    </select>
+                  </label>
+                  <label>
                     <span>Target</span>
                     <select id="cat-goal-type">
                       <option value="">No target</option>
@@ -434,6 +441,10 @@
                     <input type="number" id="cat-goal-amount" placeholder="0.00" step="0.01">
                   </label>
                 </div>
+                <label id="cat-savings-goal-field" class="hidden">
+                  <span>Savings Goal Amount</span>
+                  <input type="number" id="cat-savings-goal-amount" placeholder="0.00" step="0.01">
+                </label>
                 <div class="form-row">
                   <label class="checkbox-row recurring-checkbox-row">
                     <input type="checkbox" id="cat-recurring-enabled">

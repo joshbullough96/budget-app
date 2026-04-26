@@ -952,6 +952,10 @@ h3 {
   gap: 0.85rem;
 }
 
+#cat-savings-goal-field.hidden {
+  display: none;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1364,6 +1368,7 @@ textarea {
   align-items: center;
   justify-content: flex-start;
   gap: 0.2rem;
+  flex-wrap: wrap;
   min-width: 0;
 }
 
@@ -1372,9 +1377,41 @@ textarea {
   min-width: 0;
 }
 
+.budget-bucket-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.08rem 0.34rem;
+  border-radius: 999px;
+  background: #234d3f;
+  color: #eef7f2;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 .budget-line-copy p {
   font-size: 0.7rem;
   line-height: 1.22;
+}
+
+.budget-savings-progress-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.22rem;
+  color: #6d7e7b;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.budget-savings-progress-copy strong {
+  margin: 0;
+  color: #1e7f74;
+  font-size: 0.68rem;
 }
 
 .budget-row .amount {
@@ -2178,6 +2215,8 @@ select.txn-input {
 
 .sub-item-actions {
   margin-left: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .icon-button {
@@ -2378,6 +2417,11 @@ select.txn-input {
   color: var(--primary-strong);
   font-size: 0.84rem;
   font-weight: 700;
+}
+
+.pill.savings {
+  background: #234d3f;
+  color: #eef7f2;
 }
 
 .pill.warn {
