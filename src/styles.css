@@ -2151,7 +2151,7 @@ select.txn-input {
 
 .report-pie-layout {
   display: grid;
-  grid-template-columns: minmax(14rem, 23rem) minmax(13rem, 16rem);
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   gap: 0.9rem;
   align-items: center;
 }
@@ -2226,8 +2226,8 @@ select.txn-input {
 
 .report-pie-legend {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.45rem;
+  grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr));
+  gap: 0.55rem;
   align-items: start;
   max-height: 20rem;
   padding-right: 0.3rem;
@@ -2236,14 +2236,16 @@ select.txn-input {
 
 .report-pie-legend-group {
   display: grid;
-  gap: 0.16rem;
-  padding-bottom: 0.25rem;
+  gap: 0.5rem;
+  align-content: start;
+  min-height: 100%;
+  padding: 0.25rem 0.15rem 0.45rem 0;
   border-bottom: 1px solid rgba(22, 51, 49, 0.06);
 }
 
 .report-pie-legend-group:last-child {
   border-bottom: none;
-  padding-bottom: 0;
+  padding-bottom: 0.2rem;
 }
 
 .report-pie-legend-item {
@@ -2281,7 +2283,7 @@ select.txn-input {
 
 .report-treemap-layout {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(12rem, 0.8fr);
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   gap: 0.85rem;
   align-items: start;
 }
@@ -2326,8 +2328,11 @@ select.txn-input {
 
 .report-treemap-legend {
   display: grid;
-  gap: 0.45rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 0.5rem;
   max-height: clamp(220px, 35vh, 420px);
+  padding-right: 0.3rem;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -2336,6 +2341,8 @@ select.txn-input {
   grid-template-columns: auto minmax(0, 1fr);
   gap: 0.45rem;
   align-items: start;
+  min-height: 100%;
+  padding: 0.18rem 0.1rem 0.22rem 0;
 }
 
 .report-treemap-legend-color {

@@ -4218,6 +4218,34 @@ async function exportTransfersCsv() {
   setStatus(`Exported ${visibleTransfers.length} transfer row${visibleTransfers.length === 1 ? '' : 's'}.`);
 }
 
+async function exportAccountsCsv() {
+  const rawAccounts = await cache.getAll('accounts');
+  const accounts = sortItemsForDisplay(rawAccounts);
+
+  if (!accounts.length) {
+    setStatus('There are no accounts to export yet.');
+    return;
+  }
+
+  downloadCsvFile(
+    buildCsvFileName('accounts'),
+    ['Account', 'Description', 'Account Type', 'Starting Balance', 'Current Balance', 'Budget Status', 'Active Status', 'Sort Order', 'Id'],
+    accounts.map(account => [
+      account.name || '',
+      account.description || '',
+      getAccountTypeLabel(account),
+      Number(account.startingBalance || 0).toFixed(2),
+      Number(account.currentBalance || 0).toFixed(2),
+      account.offBudget ? 'Off Budget' : 'On Budget',
+      account.active === false ? 'Inactive' : 'Active',
+      Number.isFinite(account.sortOrder) ? account.sortOrder : '',
+      account.id
+    ])
+  );
+
+  setStatus(`Exported ${accounts.length} account row${accounts.length === 1 ? '' : 's'}.`);
+}
+
 async function exportCategoriesCsv() {
   const [rawCategories, rawSubCategories] = await Promise.all([
     cache.getAll('categories'),
@@ -5955,6 +5983,9 @@ window.onload = () => {
     });
     document.getElementById('transaction-import-button').addEventListener('click', async () => {
       await importTransactionsFromCsv();
+    });
+    document.getElementById('account-export-button').addEventListener('click', async () => {
+      await exportAccountsCsv();
     });
     document.getElementById('category-export-button').addEventListener('click', async () => {
       await exportCategoriesCsv();
