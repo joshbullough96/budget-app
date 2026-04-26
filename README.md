@@ -1,6 +1,6 @@
 # Budget App
 
-`budget-app` is a local-first desktop budgeting application built with Electron, plain JavaScript, NeDB, and a single renderer-driven UI. It is designed for envelope-style or zero-based budgeting: track accounts, categorize transactions, schedule transfers, and assign money across budget categories by month.
+`budget-app` is a local-first desktop budgeting application built with Electron, plain JavaScript, NeDB, and a renderer-driven UI. It is designed around zero-based budgeting: track accounts, categorize transactions, schedule transfers, and assign money across budget lines by month.
 
 Unlike a cloud budgeting tool, this app keeps profile and budget data on the local machine. Each user can have multiple budgets, and each budget gets its own local datastore.
 
@@ -11,13 +11,13 @@ This app is meant to help a user:
 - create one or more local budgeting profiles
 - protect profile access with a password and security-question-based recovery
 - create multiple budgets under a profile
-- manage on-budget and off-budget accounts
-- organize category groups and subcategories
-- record and import transactions
+- manage active and inactive accounts with on-budget and off-budget behavior
+- organize category groups and subcategories for spending and savings goals
+- record, import, export, filter, and reconcile transactions
 - schedule or complete transfers between accounts
 - assign money to categories month by month
-- compare assigned amounts against actual activity
-- review reports for category mix, cashflow, and budget-vs-actual performance
+- save up for longer-term goals through savings buckets
+- review reports for cashflow, budget-vs-actual performance, spending mix, and budget allocation mix
 
 The budgeting workflow is intentionally opinionated:
 
@@ -32,16 +32,30 @@ The budgeting workflow is intentionally opinionated:
 - Local profile management with password hashing
 - Security-question-based recovery for forgotten passwords
 - Multiple budgets per user
-- Account management with active/inactive and on-budget/off-budget support
-- Category groups and subcategories with targets, recurring settings, and notes
-- Transaction entry, filtering, sorting, and CSV import/export
+- Account management with:
+  - account types (`cash`, `checking`, `savings`, `creditCard`, `investment`, `asset`)
+  - active/inactive state
+  - on-budget/off-budget support
+- Category groups and subcategories with:
+  - notes
+  - recurring amount plus cadence
+  - savings bucket mode
+  - savings goal amount
+- Transaction entry with:
+  - separate inflow and outflow columns
+  - inline create and edit rows
+  - cleared checkbox support for reconciliation
+  - CSV import/export
+  - sorting and filtering
 - Transfer scheduling and completion flow with linked transactions
 - Three-month budget drafting workflow
 - Monthly notes on budget lines
+- Savings-bucket progress in the budget view
 - Reporting for:
   - inflow vs outflow
   - budgeted vs actual
-  - category and subcategory spending mix
+  - category/subcategory spending mix
+  - budget allocation mix for the selected month
 
 ## Tech Stack
 
@@ -77,22 +91,23 @@ This launches Electron and loads [src/index.html](/c:/Users/joshb/OneDrive/Deskt
 
 ```text
 budget-app/
-├─ main.js
-├─ package.json
-├─ src/
-│  ├─ index.html
-│  ├─ styles.css
-│  ├─ renderer.js
-│  ├─ models/
-│  │  ├─ Account.js
-│  │  ├─ BudgetAllocation.js
-│  │  ├─ Category.js
-│  │  ├─ SubCategory.js
-│  │  ├─ Transaction.js
-│  │  └─ Transfer.js
-│  └─ services/
-│     ├─ CacheService.js
-│     └─ ProfileService.js
+|- main.js
+|- package.json
+|- README.md
+`- src/
+   |- index.html
+   |- styles.css
+   |- renderer.js
+   |- models/
+   |  |- Account.js
+   |  |- BudgetAllocation.js
+   |  |- Category.js
+   |  |- SubCategory.js
+   |  |- Transaction.js
+   |  `- Transfer.js
+   `- services/
+      |- CacheService.js
+      `- ProfileService.js
 ```
 
 ## Architecture Overview
@@ -118,7 +133,8 @@ That path is used by the renderer-side services to decide where profile and budg
 - loading and rendering each major screen
 - form submission
 - sorting and filtering
-- derived calculations for budgeting and reporting
+- budgeting calculations
+- report calculations
 
 There is no frontend framework here. Instead, the renderer:
 
@@ -128,7 +144,7 @@ There is no frontend framework here. Instead, the renderer:
 - re-attaches event listeners
 - recalculates derived values after writes
 
-This is a pragmatic architecture for a small Electron app, but it also means `renderer.js` is the main “orchestrator” file and carries a lot of responsibility.
+This is pragmatic for a small Electron app, but it also means `renderer.js` is the main orchestrator and carries a lot of responsibility.
 
 ### 3. Services layer
 
@@ -147,7 +163,7 @@ Responsibilities:
 - store profile metadata in `profile.json`
 - store budget metadata in `budget.json`
 
-Profiles are stored beneath Electron’s `userData` path, under a `data/users/...` structure.
+Profiles are stored beneath Electron's `userData` path, under a `data/users/...` structure.
 
 #### `CacheService`
 
@@ -177,12 +193,12 @@ Collections currently include:
 
 The model classes in [src/models](/c:/Users/joshb/OneDrive/Desktop/Coding%20Projects/budget-app/src/models) are lightweight constructors used to normalize newly created records before storage.
 
-- `Account`: name, balances, budget status, sort order, active state
-- `Category`: group-level planning metadata such as targets and recurring settings
-- `SubCategory`: child budget lines beneath a category
+- `Account`: name, balances, account type, budget status, sort order, and active state
+- `Category`: group-level budgeting metadata such as recurring amount/cadence, savings-bucket mode, note, and budget status
+- `SubCategory`: child budget lines beneath a category with the same budgeting metadata options
 - `Transaction`: dated cash movement tied to an account and optionally a category/subcategory
 - `Transfer`: movement between two accounts with `scheduled` or `completed` status
-- `BudgetAllocation`: assigned amount and activity for a month/category/subcategory combination
+- `BudgetAllocation`: assigned amount and monthly note for a month/category/subcategory combination
 
 ## Data Layout On Disk
 
@@ -190,18 +206,18 @@ At a high level, storage looks like this:
 
 ```text
 <electron userData>/data/
-└─ users/
-   └─ <user-id>/
-      ├─ profile.json
-      └─ budgets/
-         └─ <budget-id>/
-            ├─ budget.json
-            ├─ accounts.db
-            ├─ categories.db
-            ├─ subCategories.db
-            ├─ transactions.db
-            ├─ transfers.db
-            └─ budgetAllocations.db
+`- users/
+   `- <user-id>/
+      |- profile.json
+      `- budgets/
+         `- <budget-id>/
+            |- budget.json
+            |- accounts.db
+            |- categories.db
+            |- subCategories.db
+            |- transactions.db
+            |- transfers.db
+            `- budgetAllocations.db
 ```
 
 This separation is important:
@@ -235,9 +251,12 @@ This separation is important:
 ### Accounts, categories, and transactions
 
 - Accounts hold balances and determine whether dollars are on budget
-- Categories and subcategories organize planned spending
+- Account type is tracked separately from budget treatment
+- Categories and subcategories organize planned spending and savings
+- Savings buckets are budget rows, not separate storage accounts
 - Transactions are categorized to produce activity
 - Transfers create linked movements between two accounts and avoid counting the transfer as ordinary spending
+- Transactions support CSV import/export and a `cleared` flag for reconciliation
 
 ### Monthly budgeting
 
@@ -250,13 +269,29 @@ The budget view combines:
 
 The user works in a visible three-month draft window, then saves those visible months back to persistent storage.
 
+The current budgeting model is:
+
+- `assigned` is the amount budgeted to a row for the selected month
+- `activity` is driven only by real categorized transactions in that month
+- `available` is carryover + assigned + activity
+- recurring category amounts can be staged into the visible months
+- savings buckets use the same math as spending rows, while also showing progress toward a total savings goal
+
+Savings buckets are intentionally simple:
+
+- money is reserved by budget assignment, not by a virtual transaction
+- saved dollars stay in the real account where the money lives
+- spending from the bucket reduces it through normal negative activity
+- a savings bucket may exist at the category level or subcategory level
+
 ### Reports
 
 The reports screen derives analytics from transactions and saved allocations. Current reports include:
 
 - inflow vs outflow over time
 - budgeted vs actual
-- category spend pie/donut breakdown with subcategory detail
+- category spend donut breakdown with subcategory detail
+- budget allocation treemap for the selected month
 
 These reports are computed in the renderer rather than stored as precomputed aggregates.
 
@@ -290,6 +325,7 @@ The renderer uses plain JavaScript state objects instead of a formal store. Exam
 - transfer table sort/filter state
 - budget draft state
 - reports month selection
+- sidebar collapsed state
 
 When making changes, be careful to update both:
 
