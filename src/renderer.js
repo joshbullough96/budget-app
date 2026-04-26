@@ -1492,7 +1492,7 @@ function getEffectiveAssignedForEntry(entry, draftAllocations) {
   }
 
   if (draft.assigned === null || typeof draft.assigned === 'undefined') {
-    return Number(draft.suggestedAssigned || 0);
+    return 0;
   }
 
   return Number(draft.assigned || 0);
@@ -1637,7 +1637,8 @@ function buildBudgetPresentationModel(context, month, draftAllocations) {
         committedAssigned,
         assigned,
         suggestedAssigned,
-        isSuggestedOnly: assigned === suggestedAssigned && getAssignedAmountForEntry(entry, draftAllocations) === 0 && suggestedAssigned > 0,
+        isSuggestedOnly: (draftAllocations.get(entry.entryKey)?.assigned === null || typeof draftAllocations.get(entry.entryKey)?.assigned === 'undefined')
+          && suggestedAssigned > 0,
         monthlyNote,
         isDirty,
         activity,
@@ -1749,7 +1750,7 @@ function renderBudgetMonthGrid(month, model, draftMeta, isSelected = false) {
                       ${row.bucketMode === 'save' && row.savingsGoalAmount > 0 ? `
                         <div class="budget-savings-progress-copy">
                           <span>Progress</span>
-                          <strong>${Math.round(row.savingsStatus.progressPercent)}%</strong>
+                          <strong>${formatSavingsProgressPercent(row.savingsStatus.progressPercent)}</strong>
                         </div>
                       ` : ''}
                     </div>
@@ -1919,6 +1920,8 @@ function refreshBudgetComputedDisplay() {
         const availableElement = rowElement.querySelector('.budget-row-available');
         const carryoverElement = rowElement.querySelector('.budget-row-carryover');
         const amountShell = rowElement.querySelector('.budget-amount-input-shell');
+        const progressValueElement = rowElement.querySelector('.budget-savings-progress-copy strong');
+        const lineCopyElement = rowElement.querySelector('.budget-line-copy');
 
         if (carryoverElement) {
           carryoverElement.textContent = formatCurrency(row.carryover);
@@ -1938,6 +1941,14 @@ function refreshBudgetComputedDisplay() {
 
         if (amountShell) {
           amountShell.classList.toggle('is-dirty', Boolean(row.isDirty));
+        }
+
+        if (progressValueElement) {
+          progressValueElement.textContent = formatSavingsProgressPercent(row.savingsStatus.progressPercent);
+        }
+
+        if (lineCopyElement) {
+          lineCopyElement.title = buildBudgetRowMetaText(row);
         }
       });
     });
@@ -3116,6 +3127,20 @@ function buildSavingsBucketStatus(savedAmount, goalAmount) {
     remainingAmount,
     progressPercent
   };
+}
+
+function formatSavingsProgressPercent(progressPercent) {
+  const normalizedPercent = Number(progressPercent || 0);
+
+  if (normalizedPercent <= 0) {
+    return '0%';
+  }
+
+  if (normalizedPercent < 1) {
+    return `${normalizedPercent.toFixed(1)}%`;
+  }
+
+  return `${Math.round(normalizedPercent)}%`;
 }
 
 function buildBudgetRowMetaText(row) {
