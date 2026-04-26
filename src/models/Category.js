@@ -5,9 +5,8 @@ class Category {
     note = '',
     offBudget = false,
     sortOrder = null,
-    targetType = '',
-    targetAmount = 0,
-    recurringConfig = {},
+    amount = 0,
+    recurringCadence = 'never',
     bucketMode = 'spend',
     savingsGoalAmount = 0
   ) {
@@ -16,13 +15,8 @@ class Category {
     this.note = note;
     this.offBudget = offBudget === 'TRUE' || offBudget === true;
     this.sortOrder = Number.isFinite(sortOrder) ? sortOrder : null;
-    this.targetType = targetType || '';
-    this.targetAmount = parseFloat(targetAmount) || 0;
-    this.goalType = this.targetType;
-    this.goalAmount = this.targetAmount;
-    this.recurringEnabled = recurringConfig.enabled === 'TRUE' || recurringConfig.enabled === true;
-    this.recurringAmount = parseFloat(recurringConfig.amount) || 0;
-    this.recurringCadence = recurringConfig.cadence || 'monthly';
+    this.recurringAmount = parseFloat(amount) || 0;
+    this.recurringCadence = recurringCadence || 'never';
     this.bucketMode = bucketMode === 'save' ? 'save' : 'spend';
     this.savingsGoalAmount = parseFloat(savingsGoalAmount) || 0;
   }

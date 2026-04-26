@@ -427,32 +427,13 @@
                     </select>
                   </label>
                   <label>
-                    <span>Target</span>
-                    <select id="cat-goal-type">
-                      <option value="">No target</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="monthly">Monthly</option>
-                      <option value="yearly">Yearly</option>
-                      <option value="custom">Custom</option>
-                    </select>
-                  </label>
-                  <label>
                     <span>Amount</span>
-                    <input type="number" id="cat-goal-amount" placeholder="0.00" step="0.01">
-                  </label>
-                </div>
-                <label id="cat-savings-goal-field" class="hidden">
-                  <span>Savings Goal Amount</span>
-                  <input type="number" id="cat-savings-goal-amount" placeholder="0.00" step="0.01">
-                </label>
-                <div class="form-row">
-                  <label class="checkbox-row recurring-checkbox-row">
-                    <input type="checkbox" id="cat-recurring-enabled">
-                    <span>Use recurring budget amount</span>
+                    <input type="number" id="cat-amount" placeholder="0.00" step="0.01">
                   </label>
                   <label>
                     <span>Recurring Cadence</span>
                     <select id="cat-recurring-cadence">
+                      <option value="never">Never</option>
                       <option value="monthly">Monthly</option>
                       <option value="weekly">Weekly</option>
                       <option value="quarterly">Quarterly</option>
@@ -460,9 +441,9 @@
                     </select>
                   </label>
                 </div>
-                <label>
-                  <span>Recurring Amount</span>
-                  <input type="number" id="cat-recurring-amount" placeholder="0.00" step="0.01">
+                <label id="cat-savings-goal-field" class="hidden">
+                  <span>Savings Goal Amount</span>
+                  <input type="number" id="cat-savings-goal-amount" placeholder="0.00" step="0.01">
                 </label>
               </div>
               <label>
@@ -567,7 +548,6 @@
                   <div class="budget-helper-actions budget-workspace-actions">
                     <button type="button" id="budget-copy-previous" class="secondary-button compact-button">Copy Previous Month</button>
                     <button type="button" id="budget-apply-recurring" class="secondary-button compact-button">Apply Recurring</button>
-                    <button type="button" id="budget-auto-apply" class="secondary-button compact-button">Auto-Apply Prefills</button>
                     <button type="button" id="budget-reset-draft" class="secondary-button compact-button">Reset Draft</button>
                     <button type="button" id="budget-export-visible" class="secondary-button compact-button">Export Visible Months</button>
                     <button type="button" id="budget-save-month" class="primary-button compact-button">Save Visible Months</button>

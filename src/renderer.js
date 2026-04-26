@@ -925,14 +925,11 @@ async function loadCategories() {
       subCategories.filter(subCategory => subCategory.categoryId === cat.id)
     );
       const categoryStatus = cat.offBudget ? 'Off Budget' : 'On Budget';
-      const categoryTarget = getBudgetTarget(cat);
       const categoryRecurring = getBudgetRecurring(cat);
       const categorySavingsLabel = getSavingsBucketLabel(cat);
       const isExpanded = expandedCategoryIds.has(cat.id);
       const categoryMeta = [
         categorySavingsLabel,
-        categoryTarget.type ? `${TARGET_TYPE_LABELS[categoryTarget.type].toLowerCase()} target` : '',
-        categoryTarget.amount ? formatCurrency(categoryTarget.amount) : '',
         categoryRecurring.enabled ? `Recurring ${RECURRING_CADENCE_LABELS[categoryRecurring.cadence].toLowerCase()} ${formatCurrency(categoryRecurring.amount)}` : ''
       ].filter(Boolean).join(' | ');
       const budgetableSubCategoryCount = categorySubCategories.filter(subCategory => !subCategory.offBudget).length;
@@ -958,7 +955,7 @@ async function loadCategories() {
             </div>
             <div class="sub-item-actions">
               ${isSavingsBucket(subCategory) ? '<div class="pill savings">Savings</div>' : ''}
-              <div class="pill ${subCategory.offBudget ? 'warn' : ''}">${getGoalLabel(getBudgetTarget(subCategory).type, getBudgetTarget(subCategory).amount)}</div>
+              ${getBudgetRecurring(subCategory).enabled ? `<div class="pill ${subCategory.offBudget ? 'warn' : ''}">${escapeHtml(RECURRING_CADENCE_LABELS[getBudgetRecurring(subCategory).cadence])}</div>` : ''}
               <div class="icon-actions">
                 <button type="button" class="icon-button" onclick="editSubCategory('${subCategory.id}')" aria-label="Edit subcategory" title="Edit subcategory">
                   ${getActionIcon('edit')}
@@ -975,12 +972,12 @@ async function loadCategories() {
           <div class="data-card-title-group">
             <div>
               <strong>Category-Level Budget</strong>
-              <p>${escapeHtml(categoryMeta || 'No target or recurring amount set yet.')}</p>
+              <p>${escapeHtml(categoryMeta || 'No recurring amount set yet.')}</p>
             </div>
           </div>
           <div class="sub-item-actions">
             ${isSavingsBucket(cat) ? '<div class="pill savings">Savings</div>' : ''}
-            <div class="pill ${cat.offBudget ? 'warn' : ''}">${getGoalLabel(categoryTarget.type, categoryTarget.amount)}</div>
+            ${categoryRecurring.enabled ? `<div class="pill ${cat.offBudget ? 'warn' : ''}">${escapeHtml(RECURRING_CADENCE_LABELS[categoryRecurring.cadence])}</div>` : ''}
           </div>
         </div>
       `;
@@ -1284,7 +1281,6 @@ function buildBudgetEntryDefinitions(categories, subCategories, transactions = [
               categoryName: category.name,
               subCategoryName: subCategory.name,
               note: subCategory.note || '',
-              target: getBudgetTarget(subCategory),
               recurring: getBudgetRecurring(subCategory),
               bucketMode: getBudgetBucketMode(subCategory),
               savingsGoalAmount: getSavingsGoalAmount(subCategory),
@@ -1297,7 +1293,6 @@ function buildBudgetEntryDefinitions(categories, subCategories, transactions = [
               categoryName: category.name,
               subCategoryName: '',
               note: category.note || '',
-              target: getBudgetTarget(category),
               recurring: getBudgetRecurring(category),
               bucketMode: getBudgetBucketMode(category),
               savingsGoalAmount: getSavingsGoalAmount(category),
@@ -1312,7 +1307,6 @@ function buildBudgetEntryDefinitions(categories, subCategories, transactions = [
             categoryName: category.name,
             subCategoryName: 'Category Savings Bucket',
             note: category.note || '',
-            target: getBudgetTarget(category),
             recurring: getBudgetRecurring(category),
             bucketMode: getBudgetBucketMode(category),
             savingsGoalAmount: getSavingsGoalAmount(category),
@@ -1328,7 +1322,6 @@ function buildBudgetEntryDefinitions(categories, subCategories, transactions = [
             categoryName: category.name,
             subCategoryName: 'Category-Level Activity',
             note: '',
-            target: getBudgetTarget(category),
             recurring: getBudgetRecurring(category),
             bucketMode: getBudgetBucketMode(category),
             savingsGoalAmount: getSavingsGoalAmount(category),
@@ -1384,9 +1377,11 @@ function getNearestPriorBudgetMonth(targetMonth, budgetAllocations) {
   return priorMonths.length ? priorMonths[priorMonths.length - 1] : null;
 }
 
-function getBudgetPrefillAmount(row, sourceAllocation = null) {
-  if (Number(row.target.amount || 0) > 0) {
-    return Number(row.target.amount || 0);
+function getBudgetPrefillAmount(month, row, sourceAllocation = null) {
+  const recurringAmount = getMonthlyRecurringAllocation(month, row.recurring);
+
+  if (recurringAmount > 0) {
+    return recurringAmount;
   }
 
   return Number(sourceAllocation?.assigned || 0);
@@ -1423,9 +1418,9 @@ function buildBudgetDraftAllocations(context, month) {
   }
 
   const sourceMonth = getNearestPriorBudgetMonth(month, context.budgetAllocations);
-  const hasTargetPrefill = context.entries
+  const hasRecurringPrefill = context.entries
     .flatMap(group => group.rows)
-    .some(row => Number(row.target.amount || 0) > 0);
+    .some(row => getMonthlyRecurringAllocation(month, row.recurring) > 0);
   const draftAllocations = new Map(context.entries.flatMap(group => group.rows).map(row => {
     const sourceAllocation = sourceMonth
       ? context.savedAllocationLookup.get(buildBudgetMonthEntryKey(sourceMonth, row.categoryId, row.subCategoryId))
@@ -1437,13 +1432,13 @@ function buildBudgetDraftAllocations(context, month) {
         categoryId: row.categoryId,
         subCategoryId: row.subCategoryId,
         assigned: null,
-        suggestedAssigned: getBudgetPrefillAmount(row, sourceAllocation),
+        suggestedAssigned: getBudgetPrefillAmount(month, row, sourceAllocation),
         note: ''
       }
     ];
   }));
-  const draftSourceLabel = hasTargetPrefill
-    ? 'category targets'
+  const draftSourceLabel = hasRecurringPrefill
+    ? 'recurring category amounts'
     : sourceMonth
       ? formatMonthLabel(sourceMonth)
       : '';
@@ -1717,9 +1712,7 @@ function renderBudgetMonthGrid(month, model, draftMeta, isSelected = false) {
             <h4>${escapeHtml(formatMonthLabel(month))}</h4>
           </div>
           <p class="budget-month-column-hint">${escapeHtml(
-            draftMeta.isPrefilled && draftMeta.draftSourceLabel
-              ? `Prefilled from ${draftMeta.draftSourceLabel}`
-              : 'Monthly draft ready'
+            'Monthly draft ready'
           )}</p>
         </div>
         <div class="budget-groups">
@@ -1968,30 +1961,6 @@ function updateBudgetDraftEntry(month, entryKey, updates) {
     ...currentDraft,
     ...updates
   });
-}
-
-function materializeBudgetPrefillSuggestions(months = budgetState.visibleMonths) {
-  let appliedCount = 0;
-
-  months.forEach(month => {
-    const draftAllocations = budgetState.draftAllocationsByMonth.get(month);
-
-    if (!draftAllocations) {
-      return;
-    }
-
-    draftAllocations.forEach((draft, entryKey) => {
-      if ((draft.assigned === null || typeof draft.assigned === 'undefined') && Number(draft.suggestedAssigned || 0) > 0) {
-        draftAllocations.set(entryKey, {
-          ...draft,
-          assigned: Number(draft.suggestedAssigned || 0)
-        });
-        appliedCount += 1;
-      }
-    });
-  });
-
-  return appliedCount;
 }
 
 function resetBudgetDraftForVisibleMonths() {
@@ -2353,17 +2322,19 @@ function syncAccountTypeDefaultBudgeting() {
 }
 
 function readRecurringFormValues() {
+  const cadence = normalizeRecurringCadence(document.getElementById('cat-recurring-cadence').value);
+
   return {
-    enabled: document.getElementById('cat-recurring-enabled').checked,
-    amount: parseFloat(document.getElementById('cat-recurring-amount').value) || 0,
-    cadence: normalizeRecurringCadence(document.getElementById('cat-recurring-cadence').value)
+    enabled: cadence !== 'never',
+    amount: parseFloat(document.getElementById('cat-amount').value) || 0,
+    cadence
   };
 }
 
 function populateRecurringFormValues(recurring = {}) {
-  document.getElementById('cat-recurring-enabled').checked = Boolean(recurring.enabled);
-  document.getElementById('cat-recurring-amount').value = Number(recurring.amount || 0) || '';
-  document.getElementById('cat-recurring-cadence').value = normalizeRecurringCadence(recurring.cadence);
+  const normalizedRecurring = getBudgetRecurring(recurring);
+  document.getElementById('cat-amount').value = Number(normalizedRecurring.amount || 0) || '';
+  document.getElementById('cat-recurring-cadence').value = normalizedRecurring.cadence;
 }
 
 function readSavingsBucketFormValues() {
@@ -2467,7 +2438,7 @@ function resetCategoryForm() {
   document.getElementById('subcat-name-field').classList.remove('hidden');
   document.getElementById('subcat-name').required = false;
   populateSavingsBucketFormValues({ bucketMode: 'spend', savingsGoalAmount: 0 });
-  populateRecurringFormValues({ enabled: false, amount: 0, cadence: 'monthly' });
+  populateRecurringFormValues({ enabled: false, amount: 0, cadence: 'never' });
   setCategoryFormMode('create-category');
 }
 
@@ -2958,14 +2929,8 @@ function getCurrentMonthValue() {
   return buildLocalMonthValue(new Date());
 }
 
-const TARGET_TYPE_LABELS = {
-  weekly: 'Weekly',
-  monthly: 'Monthly',
-  yearly: 'Yearly',
-  custom: 'Custom'
-};
-
 const RECURRING_CADENCE_LABELS = {
+  never: 'Never',
   weekly: 'Weekly',
   monthly: 'Monthly',
   quarterly: 'Quarterly',
@@ -3042,24 +3007,12 @@ function getAccountTypeLabel(account = {}) {
   return ACCOUNT_TYPE_LABELS[accountType] || ACCOUNT_TYPE_LABELS.checking;
 }
 
-function normalizeTargetType(rawType) {
-  if (rawType === 'target') {
-    return 'custom';
-  }
-
-  if (Object.prototype.hasOwnProperty.call(TARGET_TYPE_LABELS, rawType)) {
-    return rawType;
-  }
-
-  return '';
-}
-
 function normalizeRecurringCadence(rawCadence) {
   if (Object.prototype.hasOwnProperty.call(RECURRING_CADENCE_LABELS, rawCadence)) {
     return rawCadence;
   }
 
-  return 'monthly';
+  return 'never';
 }
 
 function normalizeBudgetBucketMode(rawMode) {
@@ -3092,13 +3045,6 @@ function getMonthlyRecurringAllocation(monthValue, recurring) {
   }
 
   return amount;
-}
-
-function getBudgetTarget(record) {
-  return {
-    type: normalizeTargetType(record.targetType || record.goalType || ''),
-    amount: Number(record.targetAmount ?? record.goalAmount ?? 0)
-  };
 }
 
 function getBudgetBucketMode(record) {
@@ -3148,25 +3094,9 @@ function buildBudgetRowMetaText(row) {
     row.bucketMode === 'save' && row.savingsGoalAmount > 0 ? `Goal ${formatCurrency(row.savingsGoalAmount)}` : '',
     row.bucketMode === 'save' ? `Saved ${formatCurrency(row.savingsStatus.savedAmount)}` : '',
     row.bucketMode === 'save' && row.savingsGoalAmount > 0 ? `To go ${formatCurrency(row.savingsStatus.remainingAmount)}` : '',
-    row.target.type ? `${TARGET_TYPE_LABELS[row.target.type]} target` : '',
-    row.target.amount ? formatCurrency(row.target.amount) : '',
     row.recurring.enabled ? `Recurring ${RECURRING_CADENCE_LABELS[row.recurring.cadence].toLowerCase()} ${formatCurrency(row.recurring.amount)}` : '',
     row.note
   ].filter(Boolean).join(' | ');
-}
-
-function getGoalLabel(goalType, goalAmount) {
-  const normalizedType = normalizeTargetType(goalType);
-
-  if (normalizedType && goalAmount) {
-    return `${TARGET_TYPE_LABELS[normalizedType]} ${formatCurrency(goalAmount)}`;
-  }
-
-  if (normalizedType) {
-    return `${TARGET_TYPE_LABELS[normalizedType]} target`;
-  }
-
-  return 'Flexible';
 }
 
 function getSavingsBucketLabel(record) {
@@ -3182,15 +3112,6 @@ function getSavingsBucketLabel(record) {
 
 function getSubCategoryMeta(subCategory) {
   const segments = [];
-  const target = getBudgetTarget(subCategory);
-
-  if (target.type) {
-    segments.push(`${TARGET_TYPE_LABELS[target.type].toLowerCase()} target`);
-  }
-
-  if (target.amount) {
-    segments.push(formatCurrency(target.amount));
-  }
 
   const recurringLabel = getBudgetRecurringLabel(subCategory);
 
@@ -3208,14 +3129,16 @@ function getSubCategoryMeta(subCategory) {
     segments.push(subCategory.note);
   }
 
-  return segments.join(' | ') || 'Flexible';
+  return segments.join(' | ') || 'No recurring amount set yet.';
 }
 
 function getBudgetRecurring(record) {
+  const cadence = normalizeRecurringCadence(record.recurringCadence ?? record.cadence);
+
   return {
-    enabled: Boolean(record.recurringEnabled),
-    amount: Number(record.recurringAmount || 0),
-    cadence: normalizeRecurringCadence(record.recurringCadence)
+    enabled: cadence !== 'never',
+    amount: Number(record.recurringAmount ?? record.amount ?? 0),
+    cadence
   };
 }
 
@@ -4241,7 +4164,6 @@ async function exportCategoriesCsv() {
   const categories = sortItemsForDisplay(rawCategories);
   const subCategories = rawSubCategories.slice();
   const rows = categories.flatMap(category => {
-    const categoryTarget = getBudgetTarget(category);
     const categoryRecurring = getBudgetRecurring(category);
     const categorySubCategories = sortItemsForDisplay(
       subCategories.filter(subCategory => subCategory.categoryId === category.id)
@@ -4253,18 +4175,15 @@ async function exportCategoriesCsv() {
       category.offBudget ? 'Off Budget' : 'On Budget',
       BUDGET_BUCKET_MODE_LABELS[getBudgetBucketMode(category)] || BUDGET_BUCKET_MODE_LABELS.spend,
       Number(getSavingsGoalAmount(category) || 0).toFixed(2),
-      categoryTarget.type ? (TARGET_TYPE_LABELS[categoryTarget.type] || categoryTarget.type) : '',
-      Number(categoryTarget.amount || 0).toFixed(2),
+      Number(categoryRecurring.amount || 0).toFixed(2),
       categoryRecurring.enabled ? 'Yes' : 'No',
-      categoryRecurring.enabled ? (RECURRING_CADENCE_LABELS[categoryRecurring.cadence] || categoryRecurring.cadence) : '',
-      categoryRecurring.enabled ? Number(categoryRecurring.amount || 0).toFixed(2) : '',
+      RECURRING_CADENCE_LABELS[categoryRecurring.cadence] || categoryRecurring.cadence,
       category.note || '',
       Number.isFinite(category.sortOrder) ? category.sortOrder : '',
       category.id
     ]];
 
     const subCategoryRows = categorySubCategories.map(subCategory => {
-      const target = getBudgetTarget(subCategory);
       const recurring = getBudgetRecurring(subCategory);
 
       return [
@@ -4274,11 +4193,9 @@ async function exportCategoriesCsv() {
         subCategory.offBudget ? 'Off Budget' : 'On Budget',
         BUDGET_BUCKET_MODE_LABELS[getBudgetBucketMode(subCategory)] || BUDGET_BUCKET_MODE_LABELS.spend,
         Number(getSavingsGoalAmount(subCategory) || 0).toFixed(2),
-        target.type ? (TARGET_TYPE_LABELS[target.type] || target.type) : '',
-        Number(target.amount || 0).toFixed(2),
+        Number(recurring.amount || 0).toFixed(2),
         recurring.enabled ? 'Yes' : 'No',
-        recurring.enabled ? (RECURRING_CADENCE_LABELS[recurring.cadence] || recurring.cadence) : '',
-        recurring.enabled ? Number(recurring.amount || 0).toFixed(2) : '',
+        RECURRING_CADENCE_LABELS[recurring.cadence] || recurring.cadence,
         subCategory.note || '',
         Number.isFinite(subCategory.sortOrder) ? subCategory.sortOrder : '',
         subCategory.id
@@ -4295,7 +4212,7 @@ async function exportCategoriesCsv() {
 
   downloadCsvFile(
     buildCsvFileName('categories'),
-    ['Category', 'Subcategory', 'Line Type', 'Budget Status', 'Bucket Type', 'Savings Goal Amount', 'Target Type', 'Target Amount', 'Recurring Enabled', 'Recurring Cadence', 'Recurring Amount', 'Note', 'Sort Order', 'Id'],
+    ['Category', 'Subcategory', 'Line Type', 'Budget Status', 'Bucket Type', 'Savings Goal Amount', 'Amount', 'Recurring Enabled', 'Recurring Cadence', 'Note', 'Sort Order', 'Id'],
     rows
   );
 
@@ -4321,10 +4238,8 @@ function buildVisibleBudgetExportRows() {
       group.name,
       row.subCategoryName || '',
       row.isCategoryFallback ? 'Category' : 'Subcategory',
-      row.target.type ? (TARGET_TYPE_LABELS[row.target.type] || row.target.type) : 'Flexible',
-      Number(row.target.amount || 0).toFixed(2),
-      row.recurring.enabled ? (RECURRING_CADENCE_LABELS[row.recurring.cadence] || row.recurring.cadence) : '',
-      row.recurring.enabled ? Number(row.recurring.amount || 0).toFixed(2) : '',
+      Number(row.recurring.amount || 0).toFixed(2),
+      RECURRING_CADENCE_LABELS[row.recurring.cadence] || row.recurring.cadence,
       Number(row.carryover || 0).toFixed(2),
       Number(row.assigned || 0).toFixed(2),
       Number(row.activity || 0).toFixed(2),
@@ -4344,7 +4259,7 @@ function exportVisibleBudgetMonthsCsv() {
 
   downloadCsvFile(
     buildCsvFileName('budget-visible-months'),
-    ['Month', 'Month Label', 'Category', 'Line', 'Line Type', 'Target', 'Target Amount', 'Recurring Cadence', 'Recurring Amount', 'Carryover', 'Assigned', 'Activity', 'Available', 'Monthly Note'],
+    ['Month', 'Month Label', 'Category', 'Line', 'Line Type', 'Amount', 'Recurring Cadence', 'Carryover', 'Assigned', 'Activity', 'Available', 'Monthly Note'],
     rows
   );
 
@@ -5163,8 +5078,6 @@ async function editCategory(categoryId) {
   document.getElementById('subcat-id').value = '';
   document.getElementById('cat-name').value = category.name || '';
   document.getElementById('subcat-name').value = '';
-  document.getElementById('cat-goal-type').value = getBudgetTarget(category).type;
-  document.getElementById('cat-goal-amount').value = Number(category.targetAmount ?? category.goalAmount ?? 0) || '';
   populateSavingsBucketFormValues(category);
   populateRecurringFormValues(getBudgetRecurring(category));
   document.getElementById('cat-note').value = category.note || '';
@@ -5188,10 +5101,8 @@ async function startAddSubCategory(categoryId) {
   document.getElementById('subcat-id').value = '';
   document.getElementById('cat-name').value = category.name || '';
   document.getElementById('subcat-name').value = '';
-  document.getElementById('cat-goal-type').value = '';
-  document.getElementById('cat-goal-amount').value = '';
   populateSavingsBucketFormValues({ bucketMode: 'spend', savingsGoalAmount: 0 });
-  populateRecurringFormValues({ enabled: false, amount: 0, cadence: 'monthly' });
+  populateRecurringFormValues({ enabled: false, amount: 0, cadence: 'never' });
   document.getElementById('cat-note').value = '';
   document.getElementById('cat-off-budget').checked = Boolean(category.offBudget);
   setCategoryFormMode('add-subcategory', { categoryName: category.name });
@@ -5216,8 +5127,6 @@ async function editSubCategory(subCategoryId) {
   document.getElementById('subcat-id').value = subCategory.id;
   document.getElementById('cat-name').value = category?.name || '';
   document.getElementById('subcat-name').value = subCategory.name || '';
-  document.getElementById('cat-goal-type').value = getBudgetTarget(subCategory).type;
-  document.getElementById('cat-goal-amount').value = Number(subCategory.targetAmount ?? subCategory.goalAmount ?? 0) || '';
   populateSavingsBucketFormValues(subCategory);
   populateRecurringFormValues(getBudgetRecurring(subCategory));
   document.getElementById('cat-note').value = subCategory.note || '';
@@ -5587,28 +5496,30 @@ window.onload = () => {
     const subCategoryRecordId = document.getElementById('subcat-id').value;
     const name = document.getElementById('cat-name').value;
     const subCategoryName = document.getElementById('subcat-name').value.trim();
-    const targetType = normalizeTargetType(document.getElementById('cat-goal-type').value);
-    const targetAmount = parseFloat(document.getElementById('cat-goal-amount').value) || 0;
     const recurring = readRecurringFormValues();
     const savingsBucket = readSavingsBucketFormValues();
     const note = document.getElementById('cat-note').value;
     const offBudget = document.getElementById('cat-off-budget').checked;
 
       if (mode === 'edit-category') {
-        await cache.update('categories', { id: categoryId }, { $set: {
-          name,
-          targetType,
-          targetAmount,
-          goalType: targetType,
-          goalAmount: targetAmount,
-          recurringEnabled: recurring.enabled,
-          recurringAmount: recurring.amount,
-          recurringCadence: recurring.cadence,
-          bucketMode: savingsBucket.bucketMode,
-          savingsGoalAmount: savingsBucket.savingsGoalAmount,
-          note,
-          offBudget
-      } });
+        await cache.update('categories', { id: categoryId }, {
+          $set: {
+            name,
+            recurringAmount: recurring.amount,
+            recurringCadence: recurring.cadence,
+            bucketMode: savingsBucket.bucketMode,
+            savingsGoalAmount: savingsBucket.savingsGoalAmount,
+            note,
+            offBudget
+          },
+          $unset: {
+            targetType: true,
+            targetAmount: true,
+            goalType: true,
+            goalAmount: true,
+            recurringEnabled: true
+          }
+      });
       await loadCategories();
       await loadTransactions();
       await loadBudgetView();
@@ -5623,12 +5534,11 @@ window.onload = () => {
       const subCategory = new SubCategory(
         categoryId,
         subCategoryName,
-        targetType,
-        targetAmount,
+        recurring.amount,
+        recurring.cadence,
         note,
         offBudget,
         sortOrder,
-        recurring,
         savingsBucket.bucketMode,
         savingsBucket.savingsGoalAmount
       );
@@ -5642,20 +5552,24 @@ window.onload = () => {
     }
 
     if (mode === 'edit-subcategory') {
-      await cache.update('subCategories', { id: subCategoryRecordId }, { $set: {
-        name: subCategoryName,
-        targetType,
-        targetAmount,
-        goalType: targetType,
-        goalAmount: targetAmount,
-        recurringEnabled: recurring.enabled,
-        recurringAmount: recurring.amount,
-        recurringCadence: recurring.cadence,
-        bucketMode: savingsBucket.bucketMode,
-        savingsGoalAmount: savingsBucket.savingsGoalAmount,
-        note,
-        offBudget
-      } });
+      await cache.update('subCategories', { id: subCategoryRecordId }, {
+        $set: {
+          name: subCategoryName,
+          recurringAmount: recurring.amount,
+          recurringCadence: recurring.cadence,
+          bucketMode: savingsBucket.bucketMode,
+          savingsGoalAmount: savingsBucket.savingsGoalAmount,
+          note,
+          offBudget
+        },
+        $unset: {
+          targetType: true,
+          targetAmount: true,
+          goalType: true,
+          goalAmount: true,
+          recurringEnabled: true
+        }
+      });
       await loadCategories();
       await loadTransactions();
       await loadBudgetView();
@@ -5671,9 +5585,8 @@ window.onload = () => {
         note,
         offBudget,
         sortOrder,
-        shouldApplyBudgetSettingsToCategory ? targetType : '',
-        shouldApplyBudgetSettingsToCategory ? targetAmount : 0,
-        shouldApplyBudgetSettingsToCategory ? recurring : { enabled: false, amount: 0, cadence: 'monthly' },
+        shouldApplyBudgetSettingsToCategory ? recurring.amount : 0,
+        shouldApplyBudgetSettingsToCategory ? recurring.cadence : 'never',
         shouldApplyBudgetSettingsToCategory ? savingsBucket.bucketMode : 'spend',
         shouldApplyBudgetSettingsToCategory ? savingsBucket.savingsGoalAmount : 0
       );
@@ -5683,12 +5596,11 @@ window.onload = () => {
       const subCategory = new SubCategory(
         savedCategory.id,
         subCategoryName,
-        targetType,
-        targetAmount,
+        recurring.amount,
+        recurring.cadence,
         note,
         offBudget,
         null,
-        recurring,
         savingsBucket.bucketMode,
         savingsBucket.savingsGoalAmount
       );
@@ -5889,17 +5801,6 @@ window.onload = () => {
     }
 
     setStatus(`Staged ${appliedCount} recurring budget amount${appliedCount === 1 ? '' : 's'} for the visible months.`);
-  });
-  document.getElementById('budget-auto-apply').addEventListener('click', async () => {
-    const appliedCount = materializeBudgetPrefillSuggestions();
-
-    if (!appliedCount) {
-      setStatus('No prefills were available to stage for the visible budget window.');
-      return;
-    }
-
-    renderBudgetWorkspace();
-    setStatus(`Staged ${appliedCount} prefill amount${appliedCount === 1 ? '' : 's'} in the visible three-month budget window.`);
   });
   document.getElementById('budget-reset-draft').addEventListener('click', () => {
     resetBudgetDraftForVisibleMonths();
