@@ -4398,6 +4398,27 @@ function buildBudgetAllocationBreakdown(selectedMonth, budgetAllocations, catego
   return Array.from(allocationTotals.values()).sort((left, right) => right.value - left.value);
 }
 
+function aggregateAllocationBreakdownByCategory(allocationBreakdown) {
+  const categoryTotals = new Map();
+
+  allocationBreakdown.forEach(item => {
+    const key = item.categoryLabel;
+
+    categoryTotals.set(key, {
+      key,
+      categoryLabel: item.categoryLabel,
+      value: (categoryTotals.get(key)?.value || 0) + Number(item.value || 0),
+      lines: [
+        ...(categoryTotals.get(key)?.lines || []),
+        item
+      ]
+    });
+  });
+
+  return Array.from(categoryTotals.values())
+    .sort((left, right) => right.value - left.value);
+}
+
 function hexToRgb(hexColor) {
   const normalized = String(hexColor || '').replace('#', '');
   if (normalized.length !== 6) {
@@ -4660,7 +4681,7 @@ function renderBudgetAllocationTreemap(selectedMonth, allocationBreakdown) {
                   fill="${rect.color}"
                   class="report-treemap-rect"
                 >
-                  <title>${escapeHtml(`${rect.item.categoryLabel}${rect.item.lineLabel !== 'Category-Level' ? ` / ${rect.item.lineLabel}` : ''}: ${formatCurrency(rect.item.value)} (${rect.percent.toFixed(1)}%)`)}</title>
+                  <title>${escapeHtml(`${rect.item.categoryLabel}: ${formatCurrency(rect.item.value)} (${rect.percent.toFixed(1)}%)`)}</title>
                 </rect>
                 ${rect.width >= 90 && rect.height >= 46 ? `
                   <text x="${(rect.x + 14).toFixed(2)}" y="${(rect.y + 22).toFixed(2)}" class="report-treemap-label">${escapeHtml(rect.item.categoryLabel)}</text>
@@ -4671,7 +4692,7 @@ function renderBudgetAllocationTreemap(selectedMonth, allocationBreakdown) {
           </svg>
         </div>
         <div class="report-treemap-legend">
-          ${rects.slice(0, 8).map(rect => `
+          ${rects.map(rect => `
             <div class="report-treemap-legend-item">
               <span class="report-treemap-legend-color" style="background:${rect.color}"></span>
               <div>
@@ -4837,11 +4858,12 @@ async function loadReports() {
   const subCategoryMap = new Map(subCategories.map(subCategory => [subCategory.id, subCategory]));
   const monthlySeries = buildMonthlyReportSeries(reportYear, transactions, budgetAllocations, categoryMap, subCategoryMap);
   const budgetAllocationBreakdown = buildBudgetAllocationBreakdown(selectedMonth, budgetAllocations, categoryMap, subCategoryMap);
+  const budgetAllocationCategoryBreakdown = aggregateAllocationBreakdownByCategory(budgetAllocationBreakdown);
   const categorySpendBreakdown = buildCategorySpendBreakdown(selectedMonth, transactions, categoryMap, subCategoryMap);
 
   reportsView.innerHTML = `
     ${renderBudgetVsActualChart(monthlySeries, reportYear)}
-    ${renderBudgetAllocationTreemap(selectedMonth, budgetAllocationBreakdown)}
+    ${renderBudgetAllocationTreemap(selectedMonth, budgetAllocationCategoryBreakdown)}
     ${renderInflowOutflowChart(monthlySeries)}
     ${renderCategorySpendPieChart(selectedMonth, categorySpendBreakdown)}
   `;

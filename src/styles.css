@@ -1851,12 +1851,12 @@ select.txn-input {
 }
 
 .report-line-dot {
-  cursor: pointer;
   transition: opacity 140ms ease;
 }
 
 .report-line-dot:hover {
-  opacity: 0.82;
+  stroke-width: 1;
+  opacity: 0.84;
 }
 
 .report-legend-swatch.outflow {
@@ -1929,7 +1929,6 @@ select.txn-input {
   width: 0.78rem;
   min-height: 0;
   border-radius: 999px 999px 0 0;
-  cursor: pointer;
   transition: opacity 140ms ease, transform 140ms ease;
 }
 
@@ -1938,7 +1937,7 @@ select.txn-input {
 }
 
 .report-bar:hover {
-  opacity: 0.85;
+  opacity: 0.84;
   transform: translateY(-1px);
 }
 
@@ -2073,7 +2072,7 @@ select.txn-input {
 
 .report-treemap-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(12rem, 0.8fr);
+  grid-template-columns: minmax(0, 3fr) minmax(12rem, 0.8fr);
   gap: 0.85rem;
   align-items: start;
 }
@@ -2096,6 +2095,10 @@ select.txn-input {
   stroke-width: 2;
 }
 
+.report-treemap-rect:hover {
+  opacity: 0.84;
+}
+
 .report-treemap-label,
 .report-treemap-value {
   fill: rgba(255, 252, 245, 0.98);
@@ -2114,6 +2117,8 @@ select.txn-input {
 .report-treemap-legend {
   display: grid;
   gap: 0.45rem;
+  max-height: clamp(220px, 35vh, 420px);
+  overflow-y: auto;
 }
 
 .report-treemap-legend-item {
