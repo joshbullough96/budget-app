@@ -1927,7 +1927,7 @@ select.txn-input {
 
 .transaction-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 0.35rem;
   min-width: 0;
 }
@@ -1938,7 +1938,7 @@ select.txn-input {
 
 .transaction-cleared-cell {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
 }
 
