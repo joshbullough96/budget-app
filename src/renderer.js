@@ -148,8 +148,6 @@ function updateSessionChrome() {
   const userName = sessionState.activeUser?.name || 'No user';
   const budgetName = sessionState.activeBudget?.name || 'No budget selected';
 
-  document.getElementById('session-user-name').textContent = userName;
-  document.getElementById('session-budget-name').textContent = budgetName;
   document.getElementById('topbar-user-name').textContent = sessionState.activeUser ? `Signed in as ${userName}` : 'Signed out';
   document.getElementById('topbar-budget-name').textContent = budgetName;
   document.getElementById('manager-user-name').textContent = userName;
