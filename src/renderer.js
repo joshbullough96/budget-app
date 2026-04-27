@@ -18,6 +18,7 @@ let statusToastTimeoutId = null;
 let accountsSortable = null;
 let categoriesSortable = null;
 let subCategorySortables = [];
+let budgetListSortable = null;
 let expandedCategoryIds = new Set();
 let editingTransactionId = null;
 let editingTransferId = null;
@@ -114,6 +115,7 @@ function resetWorkspaceState() {
   accountsSortable = null;
   categoriesSortable = null;
   subCategorySortables = [];
+  budgetListSortable = null;
   expandedCategoryIds = new Set();
   transactionSubCategoriesCache = [];
   budgetDirtyToastActive = false;
@@ -441,7 +443,10 @@ function renderBudgetList() {
   }
 
   budgetList.innerHTML = budgets.map(budget => `
-    <div class="budget-list-item ${budget.id === selectedBudgetId ? 'is-selected' : ''}">
+    <div class="budget-list-item sortable-card ${budget.id === selectedBudgetId ? 'is-selected' : ''}" data-item-id="${budget.id}">
+      <div class="drag-handle budget-list-drag-handle" aria-hidden="true" title="Drag to reorder">
+        ${getActionIcon('drag')}
+      </div>
       <button
         type="button"
         class="launch-list-button budget-list-open-button ${budget.id === selectedBudgetId ? 'is-selected' : ''}"
@@ -472,6 +477,8 @@ function renderBudgetList() {
       </div>
     </div>
   `).join('');
+
+  initializeBudgetListSortable();
 }
 
 function showManagerShell(user) {
@@ -2563,6 +2570,34 @@ function destroySortableInstance(instance) {
 function destroySortableInstances(instances) {
   instances.forEach(destroySortableInstance);
   return [];
+}
+
+function initializeBudgetListSortable() {
+  const list = document.getElementById('budget-list');
+
+  destroySortableInstance(budgetListSortable);
+
+  if (!list || list.children.length < 2) {
+    budgetListSortable = null;
+    return;
+  }
+
+  budgetListSortable = Sortable.create(list, {
+    animation: 180,
+    draggable: '.sortable-card',
+    filter: 'button, input, textarea, select',
+    preventOnFilter: false,
+    onEnd: async () => {
+      if (!sessionState.activeUser) {
+        return;
+      }
+
+      const orderedIds = Array.from(list.querySelectorAll('.sortable-card')).map(card => card.dataset.itemId);
+      profileService.updateBudgetSortOrder(sessionState.activeUser.id, orderedIds);
+      renderBudgetList();
+      setStatus('Updated budget order');
+    }
+  });
 }
 
 function initializeAccountsSortable() {

@@ -144,8 +144,41 @@ class ProfileService {
       name: budget.name,
       createdAt: budget.createdAt || null,
       updatedAt: budget.updatedAt || null,
-      lastOpenedAt: budget.lastOpenedAt || null
+      lastOpenedAt: budget.lastOpenedAt || null,
+      sortOrder: Number.isFinite(budget.sortOrder) ? budget.sortOrder : null
     };
+  }
+
+  sortNamedItems(items) {
+    const hasManualSort = items.some(item => Number.isFinite(item.sortOrder));
+
+    return items.slice().sort((left, right) => {
+      if (hasManualSort) {
+        const leftOrder = Number.isFinite(left.sortOrder) ? left.sortOrder : Number.MAX_SAFE_INTEGER;
+        const rightOrder = Number.isFinite(right.sortOrder) ? right.sortOrder : Number.MAX_SAFE_INTEGER;
+
+        if (leftOrder !== rightOrder) {
+          return leftOrder - rightOrder;
+        }
+      }
+
+      return String(left.name || '').localeCompare(String(right.name || ''), undefined, { sensitivity: 'base' });
+    });
+  }
+
+  getNextBudgetSortOrder(userId) {
+    const budgets = this.listDirectories(this.getBudgetsDirectory(userId))
+      .map(budgetId => this.readJson(this.getBudgetMetaPath(userId, budgetId)))
+      .filter(Boolean);
+    const numericOrders = budgets
+      .map(budget => budget.sortOrder)
+      .filter(value => Number.isFinite(value));
+
+    if (!numericOrders.length) {
+      return null;
+    }
+
+    return Math.max(...numericOrders) + 1;
   }
 
   getUsers() {
@@ -322,11 +355,12 @@ class ProfileService {
   }
 
   getBudgets(userId) {
-    return this.listDirectories(this.getBudgetsDirectory(userId))
+    const budgets = this.listDirectories(this.getBudgetsDirectory(userId))
       .map(budgetId => this.readJson(this.getBudgetMetaPath(userId, budgetId)))
       .filter(Boolean)
-      .sort((left, right) => left.name.localeCompare(right.name))
       .map(budget => this.sanitizeBudget(budget));
+
+    return this.sortNamedItems(budgets);
   }
 
   getBudget(userId, budgetId) {
@@ -361,7 +395,8 @@ class ProfileService {
       name: normalizedName,
       createdAt: now,
       updatedAt: now,
-      lastOpenedAt: null
+      lastOpenedAt: null,
+      sortOrder: this.getNextBudgetSortOrder(userId)
     };
 
     fs.mkdirSync(this.getBudgetDirectory(userId, budgetId), { recursive: true });
@@ -424,6 +459,23 @@ class ProfileService {
     this.writeJson(budgetPath, budget);
 
     return this.sanitizeBudget(budget);
+  }
+
+  updateBudgetSortOrder(userId, orderedIds) {
+    orderedIds.forEach((budgetId, index) => {
+      const budgetPath = this.getBudgetMetaPath(userId, budgetId);
+      const budget = this.readJson(budgetPath);
+
+      if (!budget) {
+        return;
+      }
+
+      budget.sortOrder = index;
+      budget.updatedAt = new Date().toISOString();
+      this.writeJson(budgetPath, budget);
+    });
+
+    return this.getBudgets(userId);
   }
 }
 

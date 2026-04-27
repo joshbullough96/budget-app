@@ -315,6 +315,7 @@ textarea {
 
 .budget-list-item .launch-list-button {
   min-width: 0;
+  padding-left: 3.35rem;
   padding-right: 5.4rem;
 }
 
@@ -338,6 +339,14 @@ textarea {
 
 .budget-list-item.is-selected .budget-list-actions .icon-button {
   background: rgba(232, 244, 238, 0.92);
+}
+
+.budget-list-drag-handle {
+  position: absolute;
+  top: 50%;
+  left: 0.72rem;
+  transform: translateY(-50%);
+  z-index: 1;
 }
 
 .text-link-button {
