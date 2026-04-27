@@ -352,7 +352,21 @@ function renderUserList() {
   }
 
   populateUserSelects(users);
-  userList.innerHTML = users.map(user => `
+  const recentUsers = users
+    .slice()
+    .sort((left, right) => {
+      const leftTime = left.lastSignedInAt ? new Date(left.lastSignedInAt).getTime() : 0;
+      const rightTime = right.lastSignedInAt ? new Date(right.lastSignedInAt).getTime() : 0;
+
+      if (leftTime !== rightTime) {
+        return rightTime - leftTime;
+      }
+
+      return String(left.name || '').localeCompare(String(right.name || ''), undefined, { sensitivity: 'base' });
+    })
+    .slice(0, 3);
+
+  userList.innerHTML = recentUsers.map(user => `
     <button
       type="button"
       class="launch-list-button ${user.id === selectedUserId ? 'is-selected' : ''}"
