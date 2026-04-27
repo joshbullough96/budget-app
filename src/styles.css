@@ -1244,6 +1244,25 @@ select:disabled {
   cursor: not-allowed;
 }
 
+select option {
+  background: #fffaf3;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+select option:checked {
+  background: rgba(30, 127, 116, 0.16);
+  color: #103532;
+  font-weight: 600;
+}
+
+select optgroup {
+  background: #f4efe4;
+  color: #6d7e7b;
+  font-style: normal;
+  font-weight: 700;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
