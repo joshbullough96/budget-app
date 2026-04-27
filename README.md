@@ -4,6 +4,18 @@
 
 Unlike a cloud budgeting tool, this app keeps profile and budget data on the local machine. Each user can have multiple budgets, and each budget gets its own local datastore.
 
+## Version 1 Highlights
+
+- Local profiles with password protection and security-question recovery
+- Multiple budgets per user
+- Account types, active/inactive state, and on-budget/off-budget handling
+- Category groups and subcategories with recurring budget amounts
+- Savings buckets for long-term goals like car funds or down payments
+- Transactions with separate inflow/outflow entry, CSV import/export, and cleared reconciliation state
+- Transfers with scheduled/completed states and linked transaction syncing
+- Three-month budget editing workflow with monthly notes
+- Reports for cash flow, budget-vs-actual, spend mix, and assigned-by-category allocation
+
 ## What The App Is For
 
 This app is meant to help a user:
@@ -51,6 +63,7 @@ The budgeting workflow is intentionally opinionated:
 - Three-month budget drafting workflow
 - Monthly notes on budget lines
 - Savings-bucket progress in the budget view
+- Drag-to-reorder support for budgets, accounts, categories, and subcategories
 - Reporting for:
   - inflow vs outflow
   - budgeted vs actual
@@ -85,7 +98,21 @@ Start the desktop app:
 npm start
 ```
 
-This launches Electron and loads [src/index.html](/c:/Users/joshb/OneDrive/Desktop/Coding%20Projects/budget-app/src/index.html).
+## Building A Release
+
+Install dependencies first:
+
+```bash
+npm install
+```
+
+Create a packaged build with Electron Builder:
+
+```bash
+npx electron-builder
+```
+
+By default, packaged output is written to `dist/`.
 
 ## Project Structure
 
@@ -116,7 +143,7 @@ The app is intentionally simple and renderer-heavy.
 
 ### 1. Electron main process
 
-[main.js](/c:/Users/joshb/OneDrive/Desktop/Coding%20Projects/budget-app/main.js) creates the browser window and exposes the Electron user data path through a small IPC bridge:
+`main.js` creates the browser window and exposes the Electron user data path through a small IPC bridge:
 
 - `app:get-user-data-path`
 
@@ -124,7 +151,7 @@ That path is used by the renderer-side services to decide where profile and budg
 
 ### 2. Renderer-driven application
 
-[renderer.js](/c:/Users/joshb/OneDrive/Desktop/Coding%20Projects/budget-app/src/renderer.js) is the application controller. It handles:
+`src/renderer.js` is the application controller. It handles:
 
 - bootstrapping the app
 - auth screen state
@@ -150,7 +177,7 @@ This is pragmatic for a small Electron app, but it also means `renderer.js` is t
 
 #### `ProfileService`
 
-[ProfileService.js](/c:/Users/joshb/OneDrive/Desktop/Coding%20Projects/budget-app/src/services/ProfileService.js) manages user profiles and budget metadata.
+`src/services/ProfileService.js` manages user profiles and budget metadata.
 
 Responsibilities:
 
@@ -167,7 +194,7 @@ Profiles are stored beneath Electron's `userData` path, under a `data/users/...`
 
 #### `CacheService`
 
-[CacheService.js](/c:/Users/joshb/OneDrive/Desktop/Coding%20Projects/budget-app/src/services/CacheService.js) manages the active budget datastore.
+`src/services/CacheService.js` manages the active budget datastore.
 
 Responsibilities:
 
@@ -191,7 +218,7 @@ Collections currently include:
 
 ### 4. Data models
 
-The model classes in [src/models](/c:/Users/joshb/OneDrive/Desktop/Coding%20Projects/budget-app/src/models) are lightweight constructors used to normalize newly created records before storage.
+The model classes in `src/models/` are lightweight constructors used to normalize newly created records before storage.
 
 - `Account`: name, balances, account type, budget status, sort order, and active state
 - `Category`: group-level budgeting metadata such as recurring amount/cadence, savings-bucket mode, note, and budget status
@@ -245,6 +272,7 @@ This separation is important:
 ### Budget selection
 
 - After sign-in, the user chooses or creates a budget
+- The quick-pick list on the sign-in screen shows the 3 most recently signed-in users
 - Selecting a budget calls `CacheService.setBudgetContext(userId, budgetId)`
 - That activates the correct NeDB files for the current budget session
 
@@ -257,6 +285,7 @@ This separation is important:
 - Transactions are categorized to produce activity
 - Transfers create linked movements between two accounts and avoid counting the transfer as ordinary spending
 - Transactions support CSV import/export and a `cleared` flag for reconciliation
+- Budget cards, account cards, and category cards can be manually reordered with drag-and-drop
 
 ### Monthly budgeting
 
@@ -294,6 +323,22 @@ The reports screen derives analytics from transactions and saved allocations. Cu
 - budget allocation treemap for the selected month
 
 These reports are computed in the renderer rather than stored as precomputed aggregates.
+
+## CSV Support
+
+The current app supports CSV import/export in these areas:
+
+- Transactions:
+  - import with `date`, `account`, `payee`, `inflow`, and `outflow`
+  - export includes inflow, outflow, and cleared state
+- Transfers:
+  - export
+- Accounts:
+  - export
+- Categories:
+  - export
+- Budget:
+  - export of the visible budget months
 
 ## Developer Notes
 

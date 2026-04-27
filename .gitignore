@@ -21,6 +21,12 @@ dist/
 build/
 out/
 release/
+*.blockmap
+*.dmg
+*.exe
+*.msi
+*.zip
+*.asar
 
 # Local app data
 data/
