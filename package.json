@@ -12,10 +12,10 @@
     "ynab",
     "electron"
   ],
-  "author": "Your Name",
+  "author": "Josh Bullough",
   "license": "MIT",
   "build": {
-    "appId": "com.yourname.budgetapp",
+    "appId": "com.joshbullough.budgetapp",
     "productName": "Budget App",
     "directories": {
       "output": "dist"
