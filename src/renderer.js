@@ -1115,7 +1115,7 @@ async function loadTransactions() {
   const emptyMarkup = !visibleTransactions.length
     ? `
         <div class="empty-state transaction-empty-state">
-          <h4>No matching transactions</h4>
+          <h4>No transactions</h4>
           <p>Adjust the column filters or add a new transaction from the first row.</p>
         </div>
       `
@@ -1210,7 +1210,7 @@ async function loadTransfers() {
   const emptyMarkup = !visibleTransfers.length
     ? `
         <div class="empty-state transaction-empty-state">
-          <h4>No matching transfers</h4>
+          <h4>No transfers</h4>
           <p>Adjust the filters or create one from the first row to move money between accounts.</p>
         </div>
       `

@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Budget App</title>
   <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
   <div id="auth-shell" class="launch-shell">
     <div class="launch-card launch-card-wide">
@@ -24,7 +26,8 @@
       </div>
       <div class="launch-shell-copy">
         <h2>Sign in or create your budgeting profile</h2>
-        <p class="section-subtitle">Profiles stay local to this app, and passwords are stored as salted hashes instead of plain text.</p>
+        <p class="section-subtitle">Profiles stay local to this app, and passwords are stored as salted hashes instead
+          of plain text.</p>
       </div>
     </div>
     <div class="launch-grid auth-launch-grid">
@@ -32,7 +35,8 @@
         <div class="panel-heading">
           <p id="auth-panel-eyebrow" class="eyebrow">Sign In</p>
           <h3 id="auth-panel-title">Choose an existing user</h3>
-          <p id="auth-panel-subtitle" class="panel-hint">Pick a profile, enter the password, and continue to your budgets.</p>
+          <p id="auth-panel-subtitle" class="panel-hint">Pick a profile, enter the password, and continue to your
+            budgets.</p>
         </div>
         <div id="auth-sign-in-view">
           <div id="user-list" class="launch-list"></div>
@@ -47,7 +51,8 @@
               <span>Password</span>
               <div class="password-field">
                 <input type="password" id="sign-in-password" placeholder="Enter your password" required>
-                <button type="button" class="password-toggle" data-password-target="sign-in-password" aria-label="Show password" aria-pressed="false">Show</button>
+                <button type="button" class="password-toggle" data-password-target="sign-in-password"
+                  aria-label="Show password" aria-pressed="false">Show</button>
               </div>
             </label>
             <div class="button-row">
@@ -55,9 +60,12 @@
             </div>
           </form>
           <div class="auth-link-stack">
-            <button type="button" id="show-reset-password" class="text-link-button auth-toggle-button">Reset password</button>
-            <button type="button" id="show-forgot-password" class="text-link-button auth-toggle-button">Forgot password?</button>
-            <button type="button" id="show-create-user" class="text-link-button auth-toggle-button">Or create a profile</button>
+            <button type="button" id="show-reset-password" class="text-link-button auth-toggle-button">Reset
+              password</button>
+            <button type="button" id="show-forgot-password" class="text-link-button auth-toggle-button">Forgot
+              password?</button>
+            <button type="button" id="show-create-user" class="text-link-button auth-toggle-button">Or create a
+              profile</button>
           </div>
         </div>
 
@@ -71,25 +79,29 @@
               <span>Password</span>
               <div class="password-field">
                 <input type="password" id="create-user-password" placeholder="At least 8 characters" required>
-                <button type="button" class="password-toggle" data-password-target="create-user-password" aria-label="Show password" aria-pressed="false">Show</button>
+                <button type="button" class="password-toggle" data-password-target="create-user-password"
+                  aria-label="Show password" aria-pressed="false">Show</button>
               </div>
             </label>
             <label>
               <span>Confirm Password</span>
               <div class="password-field">
                 <input type="password" id="create-user-confirm-password" placeholder="Re-enter the password" required>
-                <button type="button" class="password-toggle" data-password-target="create-user-confirm-password" aria-label="Show password" aria-pressed="false">Show</button>
+                <button type="button" class="password-toggle" data-password-target="create-user-confirm-password"
+                  aria-label="Show password" aria-pressed="false">Show</button>
               </div>
             </label>
             <label>
               <span>Security Question</span>
-              <input type="text" id="create-user-security-question" placeholder="What was the name of your first pet?" required>
+              <input type="text" id="create-user-security-question" placeholder="What was the name of your first pet?"
+                required>
             </label>
             <label>
               <span>Security Answer</span>
               <div class="password-field">
                 <input type="password" id="create-user-security-answer" placeholder="Enter your answer" required>
-                <button type="button" class="password-toggle" data-password-target="create-user-security-answer" aria-label="Show answer" aria-pressed="false">Show</button>
+                <button type="button" class="password-toggle" data-password-target="create-user-security-answer"
+                  aria-label="Show answer" aria-pressed="false">Show</button>
               </div>
             </label>
             <div class="button-row">
@@ -111,24 +123,28 @@
               <span>Current Password</span>
               <div class="password-field">
                 <input type="password" id="reset-password-current" placeholder="Enter the current password" required>
-                <button type="button" class="password-toggle" data-password-target="reset-password-current" aria-label="Show password" aria-pressed="false">Show</button>
+                <button type="button" class="password-toggle" data-password-target="reset-password-current"
+                  aria-label="Show password" aria-pressed="false">Show</button>
               </div>
             </label>
             <label>
               <span>New Password</span>
               <div class="password-field">
                 <input type="password" id="reset-password-value" placeholder="At least 8 characters" required>
-                <button type="button" class="password-toggle" data-password-target="reset-password-value" aria-label="Show password" aria-pressed="false">Show</button>
+                <button type="button" class="password-toggle" data-password-target="reset-password-value"
+                  aria-label="Show password" aria-pressed="false">Show</button>
               </div>
             </label>
             <label>
               <span>Confirm New Password</span>
               <div class="password-field">
                 <input type="password" id="reset-password-confirm" placeholder="Re-enter the new password" required>
-                <button type="button" class="password-toggle" data-password-target="reset-password-confirm" aria-label="Show password" aria-pressed="false">Show</button>
+                <button type="button" class="password-toggle" data-password-target="reset-password-confirm"
+                  aria-label="Show password" aria-pressed="false">Show</button>
               </div>
             </label>
-            <p class="panel-hint subtle">Leave the recovery fields as-is to keep the current security question, or update both fields together.</p>
+            <p class="panel-hint subtle">Leave the recovery fields as-is to keep the current security question, or
+              update both fields together.</p>
             <label>
               <span>Security Question</span>
               <input type="text" id="reset-password-security-question" placeholder="Set a recovery question">
@@ -137,19 +153,22 @@
               <span>Security Answer</span>
               <div class="password-field">
                 <input type="password" id="reset-password-security-answer" placeholder="Enter a new recovery answer">
-                <button type="button" class="password-toggle" data-password-target="reset-password-security-answer" aria-label="Show answer" aria-pressed="false">Show</button>
+                <button type="button" class="password-toggle" data-password-target="reset-password-security-answer"
+                  aria-label="Show answer" aria-pressed="false">Show</button>
               </div>
             </label>
             <div class="button-row">
               <button type="submit" class="primary-button">Save New Password</button>
             </div>
           </form>
-          <button type="button" id="show-sign-in-from-reset" class="text-link-button auth-toggle-button">Back to sign in</button>
+          <button type="button" id="show-sign-in-from-reset" class="text-link-button auth-toggle-button">Back to sign
+            in</button>
         </div>
 
         <div id="auth-forgot-password-view" class="hidden">
           <form id="forgot-password-form" class="stack-form launch-form">
-            <p class="panel-hint auth-recovery-hint">Use this only if you cannot remember the current password. Answer the saved security question to replace the local password for the selected profile.</p>
+            <p class="panel-hint auth-recovery-hint">Use this only if you cannot remember the current password. Answer
+              the saved security question to replace the local password for the selected profile.</p>
             <label>
               <span>Selected User</span>
               <select id="forgot-password-user-id" required>
@@ -158,37 +177,43 @@
             </label>
             <label>
               <span>Security Question</span>
-              <input type="text" id="forgot-password-question" placeholder="Choose a user to load the security question" readonly>
+              <input type="text" id="forgot-password-question" placeholder="Choose a user to load the security question"
+                readonly>
             </label>
             <label>
               <span>Security Answer</span>
               <div class="password-field">
                 <input type="password" id="forgot-password-answer" placeholder="Enter your saved answer" required>
-                <button type="button" class="password-toggle" data-password-target="forgot-password-answer" aria-label="Show answer" aria-pressed="false">Show</button>
+                <button type="button" class="password-toggle" data-password-target="forgot-password-answer"
+                  aria-label="Show answer" aria-pressed="false">Show</button>
               </div>
             </label>
             <label>
               <span>New Password</span>
               <div class="password-field">
                 <input type="password" id="forgot-password-value" placeholder="At least 8 characters" required>
-                <button type="button" class="password-toggle" data-password-target="forgot-password-value" aria-label="Show password" aria-pressed="false">Show</button>
+                <button type="button" class="password-toggle" data-password-target="forgot-password-value"
+                  aria-label="Show password" aria-pressed="false">Show</button>
               </div>
             </label>
             <label>
               <span>Confirm New Password</span>
               <div class="password-field">
                 <input type="password" id="forgot-password-confirm" placeholder="Re-enter the new password" required>
-                <button type="button" class="password-toggle" data-password-target="forgot-password-confirm" aria-label="Show password" aria-pressed="false">Show</button>
+                <button type="button" class="password-toggle" data-password-target="forgot-password-confirm"
+                  aria-label="Show password" aria-pressed="false">Show</button>
               </div>
             </label>
             <div class="button-row">
               <button type="submit" class="primary-button">Recover Access</button>
             </div>
           </form>
-          <button type="button" id="show-sign-in-from-forgot" class="text-link-button auth-toggle-button">Back to sign in</button>
+          <button type="button" id="show-sign-in-from-forgot" class="text-link-button auth-toggle-button">Back to sign
+            in</button>
         </div>
 
-        <p class="launch-disclaimer">Avoid saving sensitive information in notes or other saved fields. This app is meant for budgeting details, not private secrets or regulated data.</p>
+        <p class="launch-disclaimer">Avoid saving sensitive information in notes or other saved fields. This app is
+          meant for budgeting details, not private secrets or regulated data.</p>
       </section>
     </div>
   </div>
@@ -199,7 +224,9 @@
         <summary class="user-menu-trigger">
           <span aria-hidden="true">
             <svg viewBox="0 0 24 24" role="presentation" focusable="false">
-              <path d="M12 12.4a4.2 4.2 0 1 0-4.2-4.2 4.2 4.2 0 0 0 4.2 4.2Zm0 1.8c-4.23 0-7.7 2.24-7.7 5v.8a1 1 0 0 0 1 1h13.4a1 1 0 0 0 1-1v-.8c0-2.76-3.47-5-7.7-5Z"></path>
+              <path
+                d="M12 12.4a4.2 4.2 0 1 0-4.2-4.2 4.2 4.2 0 0 0 4.2 4.2Zm0 1.8c-4.23 0-7.7 2.24-7.7 5v.8a1 1 0 0 0 1 1h13.4a1 1 0 0 0 1-1v-.8c0-2.76-3.47-5-7.7-5Z">
+              </path>
             </svg>
           </span>
         </summary>
@@ -219,7 +246,8 @@
         </div>
         <div id="budget-list-view">
           <div id="budget-list" class="launch-list"></div>
-          <button type="button" id="show-create-budget" class="text-link-button auth-toggle-button">Or start a new budget</button>
+          <button type="button" id="show-create-budget" class="text-link-button auth-toggle-button">Or start a new
+            budget</button>
         </div>
 
         <div id="budget-create-view" class="hidden">
@@ -232,10 +260,12 @@
               <button type="submit" class="primary-button">Create Budget</button>
             </div>
           </form>
-          <button type="button" id="show-budget-list" class="text-link-button auth-toggle-button">Back to budgets</button>
+          <button type="button" id="show-budget-list" class="text-link-button auth-toggle-button">Back to
+            budgets</button>
         </div>
 
-        <p class="launch-disclaimer">Avoid saving sensitive information in notes or other saved fields. Keep this budget focused on planning and transaction details only.</p>
+        <p class="launch-disclaimer">Avoid saving sensitive information in notes or other saved fields. Keep this budget
+          focused on planning and transaction details only.</p>
       </section>
     </div>
   </div>
@@ -243,40 +273,49 @@
   <div id="app-shell" class="app-shell hidden">
     <aside class="sidebar">
       <div class="sidebar-topbar">
-        <div class="brand-top-row">
-          <div class="brand-logo">
+        <div class="sidebar-brand">
+          <div class="sidebar-brand-logo">
             <img src="assets/budget_logo.png" alt="Budget App logo">
           </div>
         </div>
-        <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-label="Collapse navigation" aria-pressed="false" title="Collapse navigation">
+        <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-label="Collapse navigation"
+          aria-pressed="false" title="Collapse navigation">
           <span class="sidebar-toggle-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false">
-              <path d="M14.7 5.3a1 1 0 0 1 0 1.4L9.41 12l5.29 5.3a1 1 0 1 1-1.41 1.4l-6-6a1 1 0 0 1 0-1.4l6-6a1 1 0 0 1 1.41 0Z"></path>
+              <path
+                d="M14.7 5.3a1 1 0 0 1 0 1.4L9.41 12l5.29 5.3a1 1 0 1 1-1.41 1.4l-6-6a1 1 0 0 1 0-1.4l6-6a1 1 0 0 1 1.41 0Z">
+              </path>
             </svg>
           </span>
         </button>
-        <div class="brand">
-          <div class="brand-copy">
-            <p class="eyebrow brand-eyebrow">Zero-Based Budget</p>
-            <h1>Budget App</h1>
-          </div>
+      </div>
+
+      <div class="sidebar-brand-copy-container">
+        <div class="sidebar-brand-copy">
+          <p class="eyebrow sidebar-brand-eyebrow">Zero-Based Budget</p>
+          <h1>Budget App</h1>
         </div>
       </div>
 
       <nav class="sidebar-nav">
-        <button class="nav-button active" data-section="accounts" data-short="A" onclick="showSection('accounts')" title="Accounts">
+
+        <button class="nav-button active" data-section="accounts" data-short="A" onclick="showSection('accounts')"
+          title="Accounts">
           <span class="nav-label">Accounts</span>
           <span class="nav-hint">Cash flow</span>
         </button>
-        <button class="nav-button" data-section="categories" data-short="C" onclick="showSection('categories')" title="Categories">
+        <button class="nav-button" data-section="categories" data-short="C" onclick="showSection('categories')"
+          title="Categories">
           <span class="nav-label">Categories</span>
           <span class="nav-hint">Plan spending</span>
         </button>
-        <button class="nav-button" data-section="transactions" data-short="T" onclick="showSection('transactions')" title="Transactions">
+        <button class="nav-button" data-section="transactions" data-short="T" onclick="showSection('transactions')"
+          title="Transactions">
           <span class="nav-label">Transactions</span>
           <span class="nav-hint">Recent activity</span>
         </button>
-        <button class="nav-button" data-section="transfers" data-short="X" onclick="showSection('transfers')" title="Transfers">
+        <button class="nav-button" data-section="transfers" data-short="X" onclick="showSection('transfers')"
+          title="Transfers">
           <span class="nav-label">Transfers</span>
           <span class="nav-hint">Move money</span>
         </button>
@@ -284,7 +323,8 @@
           <span class="nav-label">Budget</span>
           <span class="nav-hint">Monthly Allocation</span>
         </button>
-        <button class="nav-button" data-section="reports" data-short="R" onclick="showSection('reports')" title="Reports">
+        <button class="nav-button" data-section="reports" data-short="R" onclick="showSection('reports')"
+          title="Reports">
           <span class="nav-label">Reports</span>
           <span class="nav-hint">See trends</span>
         </button>
@@ -331,7 +371,9 @@
             <summary class="user-menu-trigger">
               <span aria-hidden="true">
                 <svg viewBox="0 0 24 24" role="presentation" focusable="false">
-                  <path d="M12 12.4a4.2 4.2 0 1 0-4.2-4.2 4.2 4.2 0 0 0 4.2 4.2Zm0 1.8c-4.23 0-7.7 2.24-7.7 5v.8a1 1 0 0 0 1 1h13.4a1 1 0 0 0 1-1v-.8c0-2.76-3.47-5-7.7-5Z"></path>
+                  <path
+                    d="M12 12.4a4.2 4.2 0 1 0-4.2-4.2 4.2 4.2 0 0 0 4.2 4.2Zm0 1.8c-4.23 0-7.7 2.24-7.7 5v.8a1 1 0 0 0 1 1h13.4a1 1 0 0 0 1-1v-.8c0-2.76-3.47-5-7.7-5Z">
+                  </path>
                 </svg>
               </span>
             </summary>
@@ -342,7 +384,7 @@
             </div>
           </details>
         </div>
-        </header>
+      </header>
 
       <div id="accounts" class="section active">
         <div class="section-grid">
@@ -405,7 +447,8 @@
                 <p class="panel-hint">Drag cards to reorder accounts.</p>
               </div>
               <div class="table-toolbar-actions">
-                <button type="button" id="account-export-button" class="secondary-button compact-button">Export CSV</button>
+                <button type="button" id="account-export-button" class="secondary-button compact-button">Export
+                  CSV</button>
               </div>
             </div>
             <div id="accounts-list" class="data-list"></div>
@@ -427,12 +470,12 @@
               <label>
                 <span id="cat-name-label">Category Group</span>
                 <input type="text" id="cat-name" placeholder="Groceries, Housing, Utilities..." required>
+              </label>
+              <div id="subcat-fields">
+                <label id="subcat-name-field">
+                  <span id="subcat-name-label">First Subcategory</span>
+                  <input type="text" id="subcat-name" placeholder="Dining Out, Electricity, Rent/Mortgage...">
                 </label>
-                <div id="subcat-fields">
-                  <label id="subcat-name-field">
-                    <span id="subcat-name-label">First Subcategory</span>
-                    <input type="text" id="subcat-name" placeholder="Dining Out, Electricity, Rent/Mortgage...">
-                  </label>
                 <div class="form-row">
                   <label>
                     <span>Bucket Type</span>
@@ -463,7 +506,8 @@
               </div>
               <label>
                 <span id="cat-note-label">Note</span>
-                <textarea id="cat-note" rows="4" placeholder="Optional note for this category or subcategory"></textarea>
+                <textarea id="cat-note" rows="4"
+                  placeholder="Optional note for this category or subcategory"></textarea>
               </label>
               <label class="checkbox-row">
                 <input type="checkbox" id="cat-off-budget">
@@ -484,7 +528,8 @@
                 <p class="panel-hint">Drag category cards to reorder groups.</p>
               </div>
               <div class="table-toolbar-actions">
-                <button type="button" id="category-export-button" class="secondary-button compact-button">Export CSV</button>
+                <button type="button" id="category-export-button" class="secondary-button compact-button">Export
+                  CSV</button>
               </div>
             </div>
             <div id="categories-list" class="data-list"></div>
@@ -492,106 +537,119 @@
         </div>
       </div>
 
-        <div id="transactions" class="section">
-          <section class="panel single-panel">
-            <div class="panel-heading transactions-heading">
-              <div class="transactions-heading-copy">
-                <p class="eyebrow">Transactions</p>
-                <h3>Activity table</h3>
-                <p class="panel-hint">Add, edit, delete, or import transactions inline.</p>
-                <p class="panel-hint subtle table-shortcut-tip">Tip: use ctrl+k to save the transaction.</p>
-              </div>
-              <div class="transactions-toolbar">
-                <div class="transactions-import-panel">
-                    <div class="transactions-import-panel-details">
-                      <div class="import-bar">
-                      <input type="file" id="transaction-csv-file" accept=".csv,text/csv">
-                      <button type="button" id="transaction-import-button" class="secondary-button">Import CSV</button>
-                    </div>
-                    <p class="panel-hint subtle transactions-import-hint">Required CSV columns: date, account, payee, category, inflow, outflow. Optional: subcategory, memo. Leave one of inflow or outflow blank on each row.</p>
+      <div id="transactions" class="section">
+        <section class="panel single-panel">
+          <div class="panel-heading transactions-heading">
+            <div class="transactions-heading-copy">
+              <p class="eyebrow">Transactions</p>
+              <h3>Activity table</h3>
+              <p class="panel-hint">Add, edit, delete, or import transactions inline.</p>
+              <p class="panel-hint subtle table-shortcut-tip">Tip: use ctrl+k to save the transaction.</p>
+            </div>
+            <div class="transactions-toolbar">
+              <div class="transactions-import-panel">
+                <div class="transactions-import-panel-details">
+                  <div class="import-bar">
+                    <input type="file" id="transaction-csv-file" accept=".csv,text/csv">
+                    <button type="button" id="transaction-import-button" class="secondary-button">Import CSV</button>
                   </div>
+                  <p class="panel-hint subtle transactions-import-hint">Required CSV columns: date, account, payee,
+                    category, inflow, outflow. Optional: subcategory, memo. Leave one of inflow or outflow blank on each
+                    row.</p>
                 </div>
               </div>
             </div>
-            <div id="transactions-list" class="transaction-table-shell"></div>
-          </section>
-        </div>
-
-        <div id="transfers" class="section">
-          <section class="panel single-panel">
-            <div class="panel-heading transfers-heading">
-              <div class="transactions-heading-copy">
-                <p class="eyebrow">Transfers</p>
-                <h3>Move money between accounts</h3>
-                <p class="panel-hint">Schedule or complete transfers, then keep both sides of the ledger in sync.</p>
-                <p class="panel-hint subtle table-shortcut-tip">Tip: use ctrl+k to save the transaction.</p>
-              </div>
-            </div>
-            <div id="transfers-list" class="transfer-table-shell"></div>
-          </section>
-        </div>
-
-        <div id="budget" class="section">
-          <section id="budget-summary-cards" class="budget-summary-grid"></section>
-          <div class="section-grid budget-layout">
-            <section class="panel list-panel single-panel">
-              <div class="panel-heading budget-workspace-heading">
-                <div class="budget-workspace-heading-copy">
-                  <h3>Plan every dollar</h3>
-                  <p class="panel-hint">Assign money at the row level, review carryover, and let transactions drive Activity automatically.</p>
-                  <p id="budget-draft-hint" class="panel-hint subtle budget-draft-hint">Three-month budget drafts stay editable until you save the visible months.</p>
-                </div>
-                <div class="budget-heading-controls">
-                  <div class="budget-month-nav" aria-label="Budget month navigation">
-                    <p class="eyebrow budget-month-nav-label">Selected Month</p>
-                    <button type="button" id="budget-month-prev" class="secondary-button compact-button">Previous</button>
-                    <div class="budget-month-labels">
-                      <input type="month" id="budget-month-picker" class="budget-month-picker" aria-label="Selected budget month">
-                    </div>
-                    <button type="button" id="budget-month-next" class="secondary-button compact-button">Next</button>
-                  </div>
-                  <div class="budget-helper-actions budget-workspace-actions">
-                    <button type="button" id="budget-copy-previous" class="secondary-button compact-button">Copy Previous Month</button>
-                    <button type="button" id="budget-apply-recurring" class="secondary-button compact-button">Apply Recurring</button>
-                    <button type="button" id="budget-reset-draft" class="secondary-button compact-button">Reset Draft</button>
-                    <button type="button" id="budget-export-visible" class="secondary-button compact-button">Export Visible Months</button>
-                    <button type="button" id="budget-save-month" class="primary-button compact-button">Save Visible Months</button>
-                  </div>
-                </div>
-              </div>
-              <div id="budget-view" class="budget-workspace"></div>
-            </section>
           </div>
-        </div>
+          <div id="transactions-list" class="transaction-table-shell"></div>
+        </section>
+      </div>
 
-        <div id="reports" class="section">
-          <section class="panel single-panel">
-            <div class="panel-heading reports-heading">
-              <div class="reports-heading-copy">
-                <p class="eyebrow">Reports</p>
-                <h3>See the story in your budget</h3>
-                <p class="panel-hint">Track cashflow, compare budgeted dollars to actual spending, and see where the current month is going.</p>
+      <div id="transfers" class="section">
+        <section class="panel single-panel">
+          <div class="panel-heading transfers-heading">
+            <div class="transactions-heading-copy">
+              <p class="eyebrow">Transfers</p>
+              <h3>Move money between accounts</h3>
+              <p class="panel-hint">Schedule or complete transfers, then keep both sides of the ledger in sync.</p>
+              <p class="panel-hint subtle table-shortcut-tip">Tip: use ctrl+k to save the transaction.</p>
+            </div>
+          </div>
+          <div id="transfers-list" class="transfer-table-shell"></div>
+        </section>
+      </div>
+
+      <div id="budget" class="section">
+        <section id="budget-summary-cards" class="budget-summary-grid"></section>
+        <div class="section-grid budget-layout">
+          <section class="panel list-panel single-panel">
+            <div class="panel-heading budget-workspace-heading">
+              <div class="budget-workspace-heading-copy">
+                <h3>Plan every dollar</h3>
+                <p class="panel-hint">Assign money at the row level, review carryover, and let transactions drive
+                  Activity automatically.</p>
+                <p id="budget-draft-hint" class="panel-hint subtle budget-draft-hint">Three-month budget drafts stay
+                  editable until you save the visible months.</p>
               </div>
-              <div class="reports-controls">
-                <label class="reports-control">
-                  <span>Report Month</span>
-                  <input type="month" id="reports-month-picker">
-                </label>
+              <div class="budget-heading-controls">
+                <div class="budget-month-nav" aria-label="Budget month navigation">
+                  <p class="eyebrow budget-month-nav-label">Selected Month</p>
+                  <button type="button" id="budget-month-prev" class="secondary-button compact-button">Previous</button>
+                  <div class="budget-month-labels">
+                    <input type="month" id="budget-month-picker" class="budget-month-picker"
+                      aria-label="Selected budget month">
+                  </div>
+                  <button type="button" id="budget-month-next" class="secondary-button compact-button">Next</button>
+                </div>
+                <div class="budget-helper-actions budget-workspace-actions">
+                  <button type="button" id="budget-copy-previous" class="secondary-button compact-button">Copy Previous
+                    Month</button>
+                  <button type="button" id="budget-apply-recurring" class="secondary-button compact-button">Apply
+                    Recurring</button>
+                  <button type="button" id="budget-reset-draft" class="secondary-button compact-button">Reset
+                    Draft</button>
+                  <button type="button" id="budget-export-visible" class="secondary-button compact-button">Export
+                    Visible Months</button>
+                  <button type="button" id="budget-save-month" class="primary-button compact-button">Save Visible
+                    Months</button>
+                </div>
               </div>
             </div>
-            <div id="reports-view" class="reports-grid"></div>
+            <div id="budget-view" class="budget-workspace"></div>
           </section>
         </div>
+      </div>
+
+      <div id="reports" class="section">
+        <section class="panel single-panel">
+          <div class="panel-heading reports-heading">
+            <div class="reports-heading-copy">
+              <p class="eyebrow">Reports</p>
+              <h3>See the story in your budget</h3>
+              <p class="panel-hint">Track cashflow, compare budgeted dollars to actual spending, and see where the
+                current month is going.</p>
+            </div>
+            <div class="reports-controls">
+              <label class="reports-control">
+                <span>Report Month</span>
+                <input type="month" id="reports-month-picker">
+              </label>
+            </div>
+          </div>
+          <div id="reports-view" class="reports-grid"></div>
+        </section>
+      </div>
     </main>
   </div>
 
   <div id="status-pill" class="status-pill" aria-live="polite" aria-atomic="true">
     <span id="status-pill-message" class="status-pill-message"></span>
-    <button type="button" id="status-pill-close" class="status-pill-close" aria-label="Dismiss notification" title="Dismiss notification">
+    <button type="button" id="status-pill-close" class="status-pill-close" aria-label="Dismiss notification"
+      title="Dismiss notification">
       &times;
     </button>
   </div>
 
   <script src="renderer.js"></script>
 </body>
+
 </html>
