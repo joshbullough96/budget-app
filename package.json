@@ -1,7 +1,7 @@
 {
   "name": "budget-app",
   "version": "1.0.0",
-  "description": "Local budget app with YNAB-style allocation",
+  "description": "Local budget app with zero-based budgeting",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -11,7 +11,7 @@
   },
   "keywords": [
     "budget",
-    "ynab",
+    "saving",
     "electron"
   ],
   "author": "Josh Bullough",
