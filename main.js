@@ -5,6 +5,10 @@ ipcMain.on('app:get-user-data-path', (event) => {
   event.returnValue = app.getPath('userData');
 });
 
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.joshbullough.budgetapp');
+}
+
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1200,
