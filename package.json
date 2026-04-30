@@ -33,11 +33,13 @@
     "win": {
       "icon": "build/icon.ico",
       "signAndEditExecutable": false,
+      "artifactName": "${productName} Setup.${ext}",
       "target": [
         "nsis"
       ]
     },
     "mac": {
+      "artifactName": "${productName}.${ext}",
       "target": [
         "dmg"
       ],
