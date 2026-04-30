@@ -1200,6 +1200,10 @@ h3 {
   gap: 0.65rem;
 }
 
+.half-width-field {
+  width: calc(50% - 0.325rem);
+}
+
 input,
 select,
 textarea {
@@ -3042,6 +3046,10 @@ select.txn-input {
 
   .form-row {
     grid-template-columns: 1fr;
+  }
+
+  .half-width-field {
+    width: 100%;
   }
 
   .transaction-table,

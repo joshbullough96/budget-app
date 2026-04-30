@@ -5345,7 +5345,6 @@ async function editAccount(accountId) {
   document.getElementById('acc-desc').value = account.description || '';
   document.getElementById('acc-type').value = inferAccountType(account);
   document.getElementById('acc-start').value = Number(account.startingBalance || 0);
-  document.getElementById('acc-current').value = Number(account.currentBalance || 0);
   document.getElementById('acc-off').checked = Boolean(account.offBudget);
   document.getElementById('acc-active').checked = account.active !== false;
   setAccountFormMode(true);
@@ -5784,7 +5783,6 @@ window.onload = () => {
     const desc = document.getElementById('acc-desc').value;
     const accountType = normalizeAccountType(document.getElementById('acc-type').value);
     const start = parseFloat(document.getElementById('acc-start').value);
-    const current = parseFloat(document.getElementById('acc-current').value);
     const off = document.getElementById('acc-off').checked;
     const active = document.getElementById('acc-active').checked;
 
@@ -5794,10 +5792,11 @@ window.onload = () => {
         description: desc,
         accountType,
         startingBalance: start,
-        currentBalance: current,
+        currentBalance: start,
         offBudget: off,
         active
       } });
+      await syncTransactionDerivedState([id]);
       await loadAccounts();
       await refreshDashboard();
       await loadTransactions();
@@ -5808,7 +5807,7 @@ window.onload = () => {
     }
 
     const sortOrder = await getNextSortOrder('accounts');
-    const account = new Account(name, desc, start, current, off, sortOrder, active, accountType);
+    const account = new Account(name, desc, start, off, sortOrder, active, accountType);
     await cache.insert('accounts', account);
     await loadAccounts();
     await refreshDashboard();
