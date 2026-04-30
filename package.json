@@ -25,10 +25,12 @@
     "files": [
       "main.js",
       "package.json",
+      "build/icon.ico",
       "src/**/*"
     ],
     "asar": true,
     "win": {
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false,
       "artifactName": "${productName} Setup.${ext}",
       "target": [
