@@ -18,7 +18,10 @@ Thumbs.db
 
 # Electron/package output
 dist/
-build/
+build/*
+!build/icon.ico
+!build/icon.icns
+!build/icon.png
 out/
 release/
 *.blockmap
