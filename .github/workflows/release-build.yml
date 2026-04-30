@@ -7,6 +7,14 @@ on:
         description: 'Optional release tag to publish, for example v1.0.1. Leave blank to build artifacts only.'
         required: false
         type: string
+      release_title:
+        description: 'Optional release title. Defaults to the release tag.'
+        required: false
+        type: string
+      release_notes:
+        description: 'Optional release notes.'
+        required: false
+        type: string
   push:
     tags:
       - 'v*'
@@ -106,7 +114,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || github.ref_name }}
+          RELEASE_TITLE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_title || '' }}
+          RELEASE_NOTES: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_notes || '' }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          gh release view "$TAG_NAME" --repo "$REPOSITORY" >/dev/null 2>&1 || gh release create "$TAG_NAME" --repo "$REPOSITORY" --title "$TAG_NAME" --notes "Release $TAG_NAME"
+          if [ -z "$RELEASE_TITLE" ]; then
+            RELEASE_TITLE="$TAG_NAME"
+          fi
+
+          if [ -z "$RELEASE_NOTES" ]; then
+            RELEASE_NOTES="Release $TAG_NAME"
+          fi
+
+          gh release view "$TAG_NAME" --repo "$REPOSITORY" >/dev/null 2>&1 || gh release create "$TAG_NAME" --repo "$REPOSITORY" --title "$RELEASE_TITLE" --notes "$RELEASE_NOTES"
           gh release upload "$TAG_NAME" release-packages/* --repo "$REPOSITORY" --clobber
