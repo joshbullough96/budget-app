@@ -29,7 +29,7 @@ jobs:
 
       - name: Build Windows installer
         shell: cmd
-        run: npm run build:win -- --config.npmRebuild=false
+        run: npm run build:win -- --config.npmRebuild=false --publish never
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -61,7 +61,7 @@ jobs:
         run: npm ci
 
       - name: Build Mac disk image
-        run: npx electron-builder --mac dmg --config.npmRebuild=false
+        run: npx electron-builder --mac dmg --config.npmRebuild=false --publish never
 
       - name: Upload Mac artifacts
         uses: actions/upload-artifact@v4
