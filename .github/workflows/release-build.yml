@@ -77,6 +77,7 @@ jobs:
     needs:
       - build-windows
       - build-mac
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
 
     steps:
