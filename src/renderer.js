@@ -12,6 +12,62 @@ const BudgetAllocation = require('./models/BudgetAllocation');
 
 const cache = new CacheService();
 const profileService = new ProfileService();
+const DEFAULT_BUDGET_CATEGORIES = [
+  {
+    name: 'Income',
+    note: 'Designated for positive inflow.',
+    offBudget: true,
+    subCategories: []
+  },
+  {
+    name: 'Bills',
+    note: 'Fixed or recurring expenses like rent, utilities, insurance, and subscriptions.',
+    subCategories: ['Rent/Mortgage', 'Utilities', 'Insurance', 'Subscriptions']
+  },
+  {
+    name: 'Everyday Spending',
+    note: 'Flexible day-to-day spending like groceries, fuel, household items, and dining out.',
+    subCategories: ['Groceries', 'Gas/Transportation', 'Dining Out', 'Household']
+  },
+  {
+    name: 'Savings',
+    note: 'Money set aside for future goals, emergencies, or planned purchases.',
+    subCategories: [
+      { name: 'Emergency Fund', bucketMode: 'save' },
+      { name: 'Vacation', bucketMode: 'save' },
+      { name: 'Car Maintenance', bucketMode: 'save' }
+    ]
+  },
+  {
+    name: 'Debt Payments',
+    note: 'Payments toward credit cards, loans, or other debts.',
+    subCategories: ['Credit Card', 'Loans']
+  },
+  {
+    name: 'Giving',
+    note: 'Donations, gifts, tithing, or other giving.',
+    subCategories: ['Donations', 'Gifts']
+  },
+  {
+    name: 'Miscellaneous',
+    note: 'Temporary holding category for expenses that do not fit elsewhere yet.',
+    subCategories: ['Uncategorized']
+  }
+];
+const DEFAULT_BUDGET_ACCOUNTS = [
+  {
+    name: 'Checking',
+    accountType: 'checking'
+  },
+  {
+    name: 'Savings',
+    accountType: 'savings'
+  },
+  {
+    name: 'Credit Card',
+    accountType: 'creditCard'
+  }
+];
 let editingAccountId = null;
 let categoryFormMode = 'create-category';
 let statusToastTimeoutId = null;
@@ -525,9 +581,131 @@ function resetDashboardDisplay() {
   document.getElementById('category-summary').textContent = '0 subcategories ready for assignment.';
 }
 
+function normalizeDefaultBudgetIdPart(value) {
+  const slug = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return slug || 'item';
+}
+
+function buildDefaultCategoryId(budgetId, index, name) {
+  return [
+    'default',
+    normalizeDefaultBudgetIdPart(budgetId),
+    'category',
+    String(index),
+    normalizeDefaultBudgetIdPart(name)
+  ].join('-');
+}
+
+function buildDefaultSubCategoryId(categoryId, index, name) {
+  return [
+    categoryId,
+    'sub-category',
+    String(index),
+    normalizeDefaultBudgetIdPart(name)
+  ].join('-');
+}
+
+function buildDefaultAccountId(budgetId, index, name) {
+  return [
+    'default',
+    normalizeDefaultBudgetIdPart(budgetId),
+    'account',
+    String(index),
+    normalizeDefaultBudgetIdPart(name)
+  ].join('-');
+}
+
+async function seedDefaultBudgetAccounts(budget) {
+  const existingAccounts = await cache.getAll('accounts');
+
+  if (existingAccounts.length) {
+    return 0;
+  }
+
+  for (let accountIndex = 0; accountIndex < DEFAULT_BUDGET_ACCOUNTS.length; accountIndex += 1) {
+    const accountDefinition = DEFAULT_BUDGET_ACCOUNTS[accountIndex];
+    const accountType = normalizeAccountType(accountDefinition.accountType);
+    const account = {
+      id: buildDefaultAccountId(budget.id, accountIndex, accountDefinition.name),
+      name: accountDefinition.name,
+      description: '',
+      startingBalance: 0,
+      currentBalance: 0,
+      offBudget: getDefaultOffBudgetForAccountType(accountType),
+      sortOrder: accountIndex,
+      active: true,
+      accountType
+    };
+
+    await cache.insert('accounts', account);
+  }
+
+  return DEFAULT_BUDGET_ACCOUNTS.length;
+}
+
+async function seedDefaultBudgetCategories(budget) {
+  const existingCategories = await cache.getAll('categories');
+
+  if (existingCategories.length) {
+    return 0;
+  }
+
+  let insertedSubCategoryCount = 0;
+
+  for (let categoryIndex = 0; categoryIndex < DEFAULT_BUDGET_CATEGORIES.length; categoryIndex += 1) {
+    const categoryDefinition = DEFAULT_BUDGET_CATEGORIES[categoryIndex];
+    const categoryId = buildDefaultCategoryId(budget.id, categoryIndex, categoryDefinition.name);
+    const category = {
+      id: categoryId,
+      name: categoryDefinition.name,
+      note: categoryDefinition.note || '',
+      offBudget: categoryDefinition.offBudget === true,
+      sortOrder: categoryIndex,
+      recurringAmount: 0,
+      recurringCadence: 'never',
+      bucketMode: categoryDefinition.bucketMode === 'save' ? 'save' : 'spend',
+      savingsGoalAmount: 0
+    };
+
+    await cache.insert('categories', category);
+
+    for (let subCategoryIndex = 0; subCategoryIndex < categoryDefinition.subCategories.length; subCategoryIndex += 1) {
+      const subCategoryDefinition = categoryDefinition.subCategories[subCategoryIndex];
+      const normalizedSubCategory = typeof subCategoryDefinition === 'string'
+        ? { name: subCategoryDefinition }
+        : subCategoryDefinition;
+      const subCategory = {
+        id: buildDefaultSubCategoryId(categoryId, subCategoryIndex, normalizedSubCategory.name),
+        categoryId,
+        name: normalizedSubCategory.name,
+        note: normalizedSubCategory.note || '',
+        offBudget: category.offBudget,
+        balance: 0,
+        sortOrder: subCategoryIndex,
+        recurringAmount: 0,
+        recurringCadence: 'never',
+        bucketMode: normalizedSubCategory.bucketMode === 'save' ? 'save' : 'spend',
+        savingsGoalAmount: 0
+      };
+
+      await cache.insert('subCategories', subCategory);
+      insertedSubCategoryCount += 1;
+    }
+  }
+
+  return insertedSubCategoryCount;
+}
+
 async function openBudget(user, budget) {
   resetWorkspaceState();
   cache.setBudgetContext(user.id, budget.id);
+  await seedDefaultBudgetAccounts(budget);
+  await seedDefaultBudgetCategories(budget);
   const openedBudget = profileService.markBudgetOpened(user.id, budget.id);
   sessionState.activeUser = user;
   sessionState.activeBudget = openedBudget;
