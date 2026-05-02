@@ -2486,7 +2486,7 @@ select.txn-input {
 }
 
 .debt-amortization-shell {
-  max-height: calc(100vh - 25rem);
+  max-height: calc(100vh - 24rem);
   min-height: 16rem;
   overflow: auto;
   border: 1px solid rgba(22, 51, 49, 0.08);
