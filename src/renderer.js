@@ -5705,16 +5705,17 @@ async function loadDebtPlanner() {
             <select id="debt-payment-frequency">${buildDebtPaymentFrequencyOptions(advancedSettings.paymentFrequency)}</select>
           </label>
         </div>
-        <hr class="form-divider">
-        <label class="half-width-field">
-          <span>Start Date</span>
-          <input type="date" id="debt-start-date" value="${escapeHtml(getTodayDateValue())}">
-        </label>
         <div class="debt-form-divider" aria-hidden="true"></div>
         <div class="form-row">
           <label>
             <span>Term Months</span>
             <input type="number" id="debt-term-months" min="1" step="1" value="60" placeholder="60">
+          </label>
+        </div>
+        <div class="form-row">
+          <label>
+            <span>Start Date</span>
+            <input type="date" id="debt-start-date" value="${escapeHtml(getTodayDateValue())}">
           </label>
           <label>
             <span>Payoff Date</span>
