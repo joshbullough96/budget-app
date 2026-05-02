@@ -3584,7 +3584,7 @@ function renderTransferEditorRow({ rowMode, transfer = null, accounts }) {
   const originAccountId = transfer?.originAccountId || '';
   const destinationAccountId = transfer?.destinationAccountId || '';
   const amount = transfer?.amount ?? '';
-  const status = normalizeTransferStatus(transfer?.status);
+  const status = transfer ? normalizeTransferStatus(transfer.status) : 'completed';
   const memo = transfer?.memo || '';
   const isEditRow = rowMode === 'edit';
 
@@ -3596,8 +3596,8 @@ function renderTransferEditorRow({ rowMode, transfer = null, accounts }) {
       <div><input type="number" class="txn-input txn-amount-input transfer-input" data-field="amount" value="${escapeHtml(String(amount))}" step="0.01" min="0.01" placeholder="0.00"></div>
       <div>
         <select class="txn-input transfer-input" data-field="status">
-          <option value="scheduled" ${status === 'scheduled' ? 'selected' : ''}>Scheduled</option>
           <option value="completed" ${status === 'completed' ? 'selected' : ''}>Completed</option>
+          <option value="scheduled" ${status === 'scheduled' ? 'selected' : ''}>Scheduled</option>
         </select>
       </div>
       <div><input type="text" class="txn-input transfer-input" data-field="memo" value="${escapeHtml(memo)}" placeholder="Memo"></div>
