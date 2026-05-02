@@ -1896,7 +1896,7 @@ function buildBudgetPresentationModel(context, month, draftAllocations) {
       const activity = getActivityAmountForEntry(context, month, entry);
       const available = carryover + assigned + activity;
       const isDirty = isBudgetEntryDirty(context, month, entry, draftAllocations);
-      const savingsStatus = buildSavingsBucketStatus(available, entry.savingsGoalAmount);
+      const savingsStatus = buildSavingsBucketStatus(carryover + assigned, entry.savingsGoalAmount);
 
       return {
         ...entry,
@@ -2014,7 +2014,7 @@ function renderBudgetMonthGrid(month, model, draftMeta, isSelected = false) {
                       </div>
                       ${row.bucketMode === 'save' && row.savingsGoalAmount > 0 ? `
                         <div class="budget-savings-progress-copy">
-                          <span>Progress</span>
+                          <span>Prog.</span>
                           <strong>${formatSavingsProgressPercent(row.savingsStatus.progressPercent)}</strong>
                         </div>
                       ` : ''}
@@ -3382,11 +3382,17 @@ function formatSavingsProgressPercent(progressPercent) {
     return '0%';
   }
 
-  if (normalizedPercent < 1) {
-    return `${normalizedPercent.toFixed(1)}%`;
+  if (normalizedPercent >= 100) {
+    return '100%';
   }
 
-  return `${Math.round(normalizedPercent)}%`;
+  const roundedPercent = Number(normalizedPercent.toFixed(1));
+
+  if (roundedPercent === 0) {
+    return '<0.1%';
+  }
+
+  return `${roundedPercent.toFixed(1).replace(/\.?0+$/, '')}%`;
 }
 
 function buildBudgetRowMetaText(row) {
