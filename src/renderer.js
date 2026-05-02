@@ -125,6 +125,15 @@ let budgetState = {
 let reportsState = {
   selectedMonth: ''
 };
+
+function isPrimarySaveShortcut(event) {
+  const key = String(event.key || '').toLowerCase();
+
+  return (event.ctrlKey || event.metaKey)
+    && !event.altKey
+    && (key === 'enter' || key === 'k');
+}
+
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'budgetApp.sidebarCollapsed';
 let sessionState = {
   activeUser: null,
@@ -845,6 +854,8 @@ function showSection(sectionId) {
   if (!hasActiveBudgetSession()) {
     return;
   }
+
+  document.getElementById('app-shell').dataset.activeSection = sectionId;
 
   document.querySelectorAll('.section').forEach(section => {
     section.classList.remove('active');
@@ -6157,9 +6168,7 @@ window.onload = () => {
       loadTransactions();
     });
     document.getElementById('transactions-list').addEventListener('keydown', async e => {
-      const isSaveShortcut = (e.ctrlKey || e.metaKey) && (e.key === 'Enter' || e.key.toLowerCase() === 'k');
-
-      if (!isSaveShortcut) {
+      if (!isPrimarySaveShortcut(e)) {
         return;
       }
 
@@ -6243,9 +6252,7 @@ window.onload = () => {
       loadTransfers();
     });
     document.getElementById('transfers-list').addEventListener('keydown', async e => {
-      const isSaveShortcut = (e.ctrlKey || e.metaKey) && (e.key === 'Enter' || e.key.toLowerCase() === 'k');
-
-      if (!isSaveShortcut) {
+      if (!isPrimarySaveShortcut(e)) {
         return;
       }
 

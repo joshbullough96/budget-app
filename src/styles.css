@@ -997,6 +997,66 @@ h3 {
   min-height: 360px;
 }
 
+#transactions.section.active,
+#transfers.section.active {
+  min-height: 0;
+}
+
+#transactions .single-panel,
+#transfers .single-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  max-height: calc(100vh - 9rem);
+  min-height: min(360px, calc(100vh - 9rem));
+}
+
+@media (min-width: 1081px) {
+  .app-shell[data-active-section="transactions"],
+  .app-shell[data-active-section="transfers"] {
+    height: 100vh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .app-shell[data-active-section="transactions"] .sidebar,
+  .app-shell[data-active-section="transfers"] .sidebar,
+  .app-shell[data-active-section="transactions"] .main-panel,
+  .app-shell[data-active-section="transfers"] .main-panel {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .app-shell[data-active-section="transactions"] .main-panel,
+  .app-shell[data-active-section="transfers"] .main-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .app-shell[data-active-section="transactions"] #transactions,
+  .app-shell[data-active-section="transfers"] #transfers {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .app-shell[data-active-section="transactions"] #transactions .single-panel,
+  .app-shell[data-active-section="transfers"] #transfers .single-panel {
+    height: 100%;
+    max-height: none;
+    min-height: 0;
+  }
+
+  .app-shell[data-active-section="transactions"] .transaction-table-shell,
+  .app-shell[data-active-section="transfers"] .transfer-table-shell {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .app-shell[data-active-section="transactions"] .transaction-table,
+  .app-shell[data-active-section="transfers"] .transfer-table {
+    min-height: 0;
+  }
+}
+
 .panel {
   padding: 1.15rem;
 }
@@ -1870,7 +1930,8 @@ textarea {
 .transfer-table-shell {
   display: grid;
   gap: 0;
-  overflow-x: auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 .ledger-shell-header {
@@ -1891,7 +1952,7 @@ textarea {
 
 .transaction-table,
 .transfer-table {
-  overflow: hidden;
+  overflow: auto;
   border: 1px solid rgba(22, 51, 49, 0.08);
   border-radius: 22px;
   background: rgba(255, 253, 248, 0.86);
