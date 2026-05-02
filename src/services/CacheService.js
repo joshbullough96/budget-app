@@ -97,6 +97,17 @@ class CacheService {
     });
   }
 
+  async findOne(collection, query) {
+    this.ensureCollection(collection);
+
+    return new Promise((resolve, reject) => {
+      this.db[collection].findOne(query, (err, doc) => {
+        if (err) reject(err);
+        else resolve(doc);
+      });
+    });
+  }
+
   async insert(collection, doc) {
     this.ensureCollection(collection);
 
