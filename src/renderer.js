@@ -76,6 +76,7 @@ let categoriesSortable = null;
 let subCategorySortables = [];
 let budgetListSortable = null;
 let expandedCategoryIds = new Set();
+let isAdvancedDebtSettingsExpanded = false;
 let editingTransactionId = null;
 let editingTransferId = null;
 let transactionSubCategoriesCache = [];
@@ -125,6 +126,36 @@ let budgetState = {
 let reportsState = {
   selectedMonth: ''
 };
+let debtCalculatorState = {
+  selectedAccountId: '',
+  advancedSettingsTouched: false,
+  rateType: 'apr',
+  compounding: 'monthly',
+  paymentFrequency: 'monthly',
+  sortKey: 'date',
+  sortDirection: 'asc'
+};
+
+const DEBT_RATE_TYPE_OPTIONS = [
+  { value: 'apr', label: 'APR / Nominal Annual Rate' },
+  { value: 'apy', label: 'APY / Effective Annual Rate' }
+];
+
+const DEBT_COMPOUNDING_OPTIONS = [
+  { value: 'annually', label: 'Annually', periodsPerYear: 1 },
+  { value: 'semi-annually', label: 'Semi-annually', periodsPerYear: 2 },
+  { value: 'quarterly', label: 'Quarterly', periodsPerYear: 4 },
+  { value: 'monthly', label: 'Monthly', periodsPerYear: 12 },
+  { value: 'daily', label: 'Daily', periodsPerYear: 365 },
+  { value: 'continuously', label: 'Continuously', periodsPerYear: Infinity }
+];
+
+const DEBT_PAYMENT_FREQUENCY_OPTIONS = [
+  { value: 'monthly', label: 'Monthly', paymentsPerYear: 12 },
+  { value: 'semi-monthly', label: 'Semi-monthly', paymentsPerYear: 24 },
+  { value: 'biweekly', label: 'Biweekly', paymentsPerYear: 26 },
+  { value: 'weekly', label: 'Weekly', paymentsPerYear: 52 }
+];
 
 function isPrimarySaveShortcut(event) {
   const key = String(event.key || '').toLowerCase();
@@ -161,6 +192,10 @@ const sectionCopy = {
   budget: {
     title: 'Monthly Budget',
     subtitle: 'Assign every dollar with confidence before the month gets busy.'
+  },
+  debt: {
+    title: 'Debt Planner',
+    subtitle: 'Project loan payoff timing, interest, and monthly payment tradeoffs.'
   },
   reports: {
     title: 'Reports',
@@ -889,6 +924,9 @@ async function loadSectionData(sectionId) {
     case 'budget':
       await loadBudgetView();
       break;
+    case 'debt':
+      await loadDebtPlanner();
+      break;
     case 'reports':
       await loadReports();
       break;
@@ -1301,6 +1339,22 @@ async function toggleCategoryExpansion(categoryId) {
   }
 
   await loadCategories();
+}
+
+function toggleAdvancedDebtSettings() {
+  isAdvancedDebtSettingsExpanded = !isAdvancedDebtSettingsExpanded;
+  const button = document.querySelector('.debt-settings-toggle');
+  const content = document.getElementById('debt-advanced-settings-content');
+  
+  if (button) {
+    button.classList.toggle('expanded', isAdvancedDebtSettingsExpanded);
+    button.setAttribute('aria-expanded', isAdvancedDebtSettingsExpanded);
+  }
+  
+  if (content) {
+    content.classList.toggle('expanded', isAdvancedDebtSettingsExpanded);
+    content.classList.toggle('collapsed', !isAdvancedDebtSettingsExpanded);
+  }
 }
 
 async function loadTransactions() {
@@ -2033,14 +2087,9 @@ function renderBudgetMonthGrid(month, model, draftMeta, isSelected = false) {
                           data-entry-key="${row.entryKey}"
                           data-month="${month}"
                           aria-label="Amount to allocate for ${escapeHtml(row.subCategoryName || row.categoryName)} in ${escapeHtml(formatMonthLabel(month))}"
-                          value="${escapeHtml(String(
-                            Number.isFinite(getAssignedAmountForEntry(row, getMonthDraftState(month).draftAllocations))
-                              && getAssignedAmountForEntry(row, getMonthDraftState(month).draftAllocations) !== 0
-                              ? getAssignedAmountForEntry(row, getMonthDraftState(month).draftAllocations)
-                              : ''
-                          ))}"
+                          value="${escapeHtml(formatDecimalInputValue(getAssignedAmountForEntry(row, getMonthDraftState(month).draftAllocations)))}"
                           step="0.01"
-                          placeholder="${escapeHtml(row.suggestedAssigned ? String(row.suggestedAssigned) : '0.00')}"
+                          placeholder="${escapeHtml(formatDecimalInputValue(row.suggestedAssigned, { blankZero: false }))}"
                         >
                       </div>
                     </div>
@@ -2600,7 +2649,7 @@ function syncAccountTypeDefaultBudgeting() {
   document.getElementById('acc-off').checked = getDefaultOffBudgetForAccountType(selectedType);
 
   if (isDebtAccountType(selectedType) && Number(startInput.value || 0) < 0) {
-    startInput.value = Math.abs(Number(startInput.value));
+    startInput.value = formatDecimalInputValue(Math.abs(Number(startInput.value)));
   }
 }
 
@@ -2616,7 +2665,7 @@ function readRecurringFormValues() {
 
 function populateRecurringFormValues(recurring = {}) {
   const normalizedRecurring = getBudgetRecurring(recurring);
-  document.getElementById('cat-amount').value = Number(normalizedRecurring.amount || 0) || '';
+  document.getElementById('cat-amount').value = formatDecimalInputValue(normalizedRecurring.amount);
   document.getElementById('cat-recurring-cadence').value = normalizedRecurring.cadence;
 }
 
@@ -2632,7 +2681,7 @@ function readSavingsBucketFormValues() {
 
 function populateSavingsBucketFormValues(record = {}) {
   document.getElementById('cat-bucket-mode').value = getBudgetBucketMode(record);
-  document.getElementById('cat-savings-goal-amount').value = getSavingsGoalAmount(record) || '';
+  document.getElementById('cat-savings-goal-amount').value = formatDecimalInputValue(getSavingsGoalAmount(record));
   syncSavingsBucketFormState();
 }
 
@@ -2899,6 +2948,16 @@ function formatCurrency(amount) {
     style: 'currency',
     currency: 'USD'
   }).format(Number(amount || 0));
+}
+
+function formatDecimalInputValue(value, { blankZero = true } = {}) {
+  const numberValue = Number(value || 0);
+
+  if (!Number.isFinite(numberValue) || (blankZero && numberValue === 0)) {
+    return '';
+  }
+
+  return numberValue.toFixed(2);
 }
 
 function formatCompactCurrency(amount) {
@@ -3356,6 +3415,10 @@ function getAccountTypeLabel(account = {}) {
   return ACCOUNT_TYPE_LABELS[accountType] || ACCOUNT_TYPE_LABELS.checking;
 }
 
+function getAccountDebtAmount(account = {}) {
+  return Math.max(0, -getAccountBalance(account, 'currentBalance'));
+}
+
 function normalizeRecurringCadence(rawCadence) {
   if (Object.prototype.hasOwnProperty.call(RECURRING_CADENCE_LABELS, rawCadence)) {
     return rawCadence;
@@ -3531,10 +3594,10 @@ function renderTransactionEditorRow({ rowMode, transaction = null, accounts, cat
     .join('');
   const memo = transaction?.memo || '';
   const inflowAmount = transaction && Number(transaction.amount || 0) > 0
-    ? Math.abs(Number(transaction.amount || 0))
+    ? formatDecimalInputValue(Math.abs(Number(transaction.amount || 0)))
     : '';
   const outflowAmount = transaction && Number(transaction.amount || 0) < 0
-    ? Math.abs(Number(transaction.amount || 0))
+    ? formatDecimalInputValue(Math.abs(Number(transaction.amount || 0)))
     : '';
   const isEditRow = rowMode === 'edit';
 
@@ -3546,8 +3609,8 @@ function renderTransactionEditorRow({ rowMode, transaction = null, accounts, cat
       <div><select class="txn-input txn-category-select" data-field="categoryId">${buildSelectOptions(categories, categoryId, 'Select')}</select></div>
       <div><select class="txn-input txn-subcategory-select" data-field="subCategoryId" ${!categoryId || !matchingSubCategories.length ? 'disabled' : ''}>${subCategoryOptions}</select></div>
       <div><input type="text" class="txn-input" data-field="memo" value="${escapeHtml(memo)}" placeholder="Memo"></div>
-      <div><input type="number" class="txn-input txn-flow-input" data-field="outflow" value="${escapeHtml(String(outflowAmount))}" step="0.01" min="0" placeholder="0.00" aria-label="Transaction outflow"></div>
-      <div><input type="number" class="txn-input txn-flow-input" data-field="inflow" value="${escapeHtml(String(inflowAmount))}" step="0.01" min="0" placeholder="0.00" aria-label="Transaction inflow"></div>
+      <div><input type="number" class="txn-input txn-flow-input" data-field="outflow" value="${escapeHtml(outflowAmount)}" step="0.01" min="0" placeholder="0.00" aria-label="Transaction outflow"></div>
+      <div><input type="number" class="txn-input txn-flow-input" data-field="inflow" value="${escapeHtml(inflowAmount)}" step="0.01" min="0" placeholder="0.00" aria-label="Transaction inflow"></div>
       <div class="transaction-muted-cell">Auto</div>
       <div class="transaction-cleared-cell">
         <input type="checkbox" class="transaction-cleared-checkbox" disabled aria-label="Transaction cleared">
@@ -3632,7 +3695,7 @@ function renderTransferEditorRow({ rowMode, transfer = null, accounts }) {
   const transferDate = transfer?.transferDate || getTodayDateValue();
   const originAccountId = transfer?.originAccountId || '';
   const destinationAccountId = transfer?.destinationAccountId || '';
-  const amount = transfer?.amount ?? '';
+  const amount = transfer ? formatDecimalInputValue(transfer.amount) : '';
   const status = transfer ? normalizeTransferStatus(transfer.status) : 'completed';
   const memo = transfer?.memo || '';
   const isEditRow = rowMode === 'edit';
@@ -3642,7 +3705,7 @@ function renderTransferEditorRow({ rowMode, transfer = null, accounts }) {
       <div><input type="date" class="txn-input transfer-input" data-field="transferDate" value="${escapeHtml(transferDate)}"></div>
       <div><select class="txn-input transfer-input" data-field="originAccountId">${buildTransferAccountOptions(accounts, originAccountId)}</select></div>
       <div><select class="txn-input transfer-input" data-field="destinationAccountId">${buildTransferAccountOptions(accounts, destinationAccountId)}</select></div>
-      <div><input type="number" class="txn-input txn-amount-input transfer-input" data-field="amount" value="${escapeHtml(String(amount))}" step="0.01" min="0.01" placeholder="0.00"></div>
+      <div><input type="number" class="txn-input txn-amount-input transfer-input" data-field="amount" value="${escapeHtml(amount)}" step="0.01" min="0.01" placeholder="0.00"></div>
       <div>
         <select class="txn-input transfer-input" data-field="status">
           <option value="completed" ${status === 'completed' ? 'selected' : ''}>Completed</option>
@@ -5222,6 +5285,463 @@ function renderCategorySpendPieChart(selectedMonth, breakdown) {
   `;
 }
 
+function addMonthsToDate(date, months) {
+  const nextDate = new Date(date);
+  nextDate.setMonth(nextDate.getMonth() + months);
+  return nextDate;
+}
+
+function addDaysToDate(date, days) {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
+}
+
+function addPaymentPeriodsToDate(date, periods, paymentFrequency) {
+  if (paymentFrequency === 'monthly') {
+    return addMonthsToDate(date, periods);
+  }
+
+  if (paymentFrequency === 'semi-monthly') {
+    return addDaysToDate(date, periods * 15);
+  }
+
+  if (paymentFrequency === 'biweekly') {
+    return addDaysToDate(date, periods * 14);
+  }
+
+  return addDaysToDate(date, periods * 7);
+}
+
+function calculateAmortizedPayment(principal, periodicRate, paymentPeriods) {
+  if (paymentPeriods <= 0) {
+    return 0;
+  }
+
+  if (periodicRate <= 0) {
+    return principal / paymentPeriods;
+  }
+
+  const rateFactor = Math.pow(1 + periodicRate, paymentPeriods);
+  return principal * ((periodicRate * rateFactor) / (rateFactor - 1));
+}
+
+function getDebtCompoundingOption(value) {
+  return DEBT_COMPOUNDING_OPTIONS.find(option => option.value === value)
+    || DEBT_COMPOUNDING_OPTIONS.find(option => option.value === 'monthly');
+}
+
+function getDebtPaymentFrequencyOption(value) {
+  return DEBT_PAYMENT_FREQUENCY_OPTIONS.find(option => option.value === value)
+    || DEBT_PAYMENT_FREQUENCY_OPTIONS.find(option => option.value === 'monthly');
+}
+
+function getDebtPaymentFrequencyLabel(value) {
+  return getDebtPaymentFrequencyOption(value).label.toLowerCase();
+}
+
+function getEffectiveAnnualRate(annualRatePercent, rateType, compoundingValue) {
+  const annualRate = Math.max(0, Number(annualRatePercent || 0)) / 100;
+  const compounding = getDebtCompoundingOption(compoundingValue);
+
+  if (annualRate <= 0) {
+    return 0;
+  }
+
+  if (rateType === 'apy') {
+    return annualRate;
+  }
+
+  if (compounding.value === 'continuously') {
+    return Math.exp(annualRate) - 1;
+  }
+
+  return Math.pow(1 + (annualRate / compounding.periodsPerYear), compounding.periodsPerYear) - 1;
+}
+
+function getEffectivePaymentRate(annualRatePercent, rateType, compoundingValue, paymentFrequencyValue) {
+  const effectiveAnnualRate = getEffectiveAnnualRate(annualRatePercent, rateType, compoundingValue);
+  const paymentFrequency = getDebtPaymentFrequencyOption(paymentFrequencyValue);
+
+  if (effectiveAnnualRate <= 0) {
+    return 0;
+  }
+
+  return Math.pow(1 + effectiveAnnualRate, 1 / paymentFrequency.paymentsPerYear) - 1;
+}
+
+function getPaymentPeriodCountForTerm(termMonths, paymentFrequencyValue) {
+  const paymentFrequency = getDebtPaymentFrequencyOption(paymentFrequencyValue);
+  return Math.max(1, Math.round((Math.max(1, Number(termMonths || 0)) / 12) * paymentFrequency.paymentsPerYear));
+}
+
+function getPaymentPeriodCountForDateRange(startDate, payoffDate, paymentFrequencyValue) {
+  const paymentFrequency = getDebtPaymentFrequencyOption(paymentFrequencyValue);
+  const dayDifference = Math.max(1, Math.ceil((payoffDate - startDate) / (1000 * 60 * 60 * 24)));
+
+  return Math.max(1, Math.round((dayDifference / 365) * paymentFrequency.paymentsPerYear));
+}
+
+function buildLoanPayoffProjection(values) {
+  const principal = Math.max(0, Number(values.principal || 0));
+  const annualRate = Math.max(0, Number(values.annualRate || 0));
+  const rateType = values.rateType === 'apy' ? 'apy' : 'apr';
+  const compounding = getDebtCompoundingOption(values.compounding);
+  const paymentFrequency = getDebtPaymentFrequencyOption(values.paymentFrequency);
+  const periodicRate = getEffectivePaymentRate(annualRate, rateType, compounding.value, paymentFrequency.value);
+  const extraPayment = Math.max(0, Number(values.extraPayment || 0));
+  const startDate = values.startDate ? parseDateValue(values.startDate) : new Date();
+  const payoffDate = values.payoffDate ? parseDateValue(values.payoffDate) : null;
+  const payoffDateTerm = payoffDate && !Number.isNaN(payoffDate.getTime())
+    ? getPaymentPeriodCountForDateRange(startDate, payoffDate, paymentFrequency.value)
+    : 0;
+  const requestedTermMonths = Math.max(0, Math.round(Number(values.termMonths || 0)));
+  const paymentPeriods = payoffDateTerm || getPaymentPeriodCountForTerm(requestedTermMonths || 60, paymentFrequency.value);
+  const requestedPayment = Math.max(0, Number(values.paymentAmount || 0));
+  const periodicPayment = requestedPayment || calculateAmortizedPayment(principal, periodicRate, paymentPeriods);
+  const scheduledPayment = periodicPayment + extraPayment;
+
+  if (principal <= 0) {
+    return { error: 'Enter a current balance greater than zero to build a payoff plan.' };
+  }
+
+  if (scheduledPayment <= 0) {
+    return { error: 'Enter a payment amount or a payoff term.' };
+  }
+
+  const schedule = [];
+  let balance = principal;
+  let totalInterest = 0;
+  let totalPaid = 0;
+  const maxPaymentPeriods = paymentFrequency.paymentsPerYear * 50;
+
+  for (let paymentIndex = 1; paymentIndex <= maxPaymentPeriods && balance > 0.005; paymentIndex += 1) {
+    const interest = balance * periodicRate;
+
+    if (scheduledPayment <= interest && periodicRate > 0) {
+      return { error: 'The payment is too low to cover periodic interest. Increase the payment or reduce the rate.' };
+    }
+
+    const principalPayment = Math.min(balance, scheduledPayment - interest);
+    const payment = principalPayment + interest;
+    balance = Math.max(0, balance - principalPayment);
+    totalInterest += interest;
+    totalPaid += payment;
+
+    schedule.push({
+      monthNumber: paymentIndex,
+      date: addPaymentPeriodsToDate(startDate, paymentIndex - 1, paymentFrequency.value),
+      payment,
+      principal: principalPayment,
+      interest,
+      balance
+    });
+  }
+
+  if (balance > 0.005) {
+    return { error: 'The payoff plan runs longer than 50 years. Increase the payment or shorten the term.' };
+  }
+
+  return {
+    principal,
+    annualRate,
+    rateType,
+    compounding,
+    paymentFrequency,
+    periodicPayment,
+    extraPayment,
+    scheduledPayment,
+    payoffMonths: Math.round((schedule.length / paymentFrequency.paymentsPerYear) * 12),
+    payoffDate: schedule.length ? schedule[schedule.length - 1].date : startDate,
+    totalInterest,
+    totalPaid,
+    schedule
+  };
+}
+
+function readDebtPlannerValues() {
+  return {
+    principal: parseFloat(document.getElementById('debt-principal').value),
+    annualRate: parseFloat(document.getElementById('debt-rate').value),
+    rateType: document.getElementById('debt-rate-type').value,
+    compounding: document.getElementById('debt-compounding').value,
+    paymentFrequency: document.getElementById('debt-payment-frequency').value,
+    termMonths: parseFloat(document.getElementById('debt-term-months').value),
+    payoffDate: document.getElementById('debt-payoff-date').value,
+    paymentAmount: parseFloat(document.getElementById('debt-payment-amount').value),
+    extraPayment: parseFloat(document.getElementById('debt-extra-payment').value),
+    startDate: document.getElementById('debt-start-date').value || getTodayDateValue()
+  };
+}
+
+function formatPayoffDuration(months) {
+  const years = Math.floor(months / 12);
+  const remainingMonths = months % 12;
+
+  if (!years) {
+    return `${remainingMonths} mo`;
+  }
+
+  if (!remainingMonths) {
+    return `${years} yr`;
+  }
+
+  return `${years} yr ${remainingMonths} mo`;
+}
+
+function getDebtSortIndicator(sortKey) {
+  if (debtCalculatorState.sortKey !== sortKey) {
+    return '';
+  }
+
+  return debtCalculatorState.sortDirection === 'asc'
+    ? ' <span class="transaction-sort-indicator" aria-hidden="true">&#9652;</span>'
+    : ' <span class="transaction-sort-indicator" aria-hidden="true">&#9662;</span>';
+}
+
+function getDebtAmortizationSortValue(row, sortKey) {
+  if (sortKey === 'date') {
+    return row.date.getTime();
+  }
+
+  return Number(row[sortKey] || 0);
+}
+
+function getSortedDebtAmortizationRows(schedule) {
+  if (!debtCalculatorState.sortKey || !debtCalculatorState.sortDirection) {
+    return schedule.slice();
+  }
+
+  const direction = debtCalculatorState.sortDirection === 'asc' ? 1 : -1;
+  const sortKey = debtCalculatorState.sortKey;
+
+  return schedule.slice().sort((left, right) => {
+    const leftValue = getDebtAmortizationSortValue(left, sortKey);
+    const rightValue = getDebtAmortizationSortValue(right, sortKey);
+
+    if (leftValue !== rightValue) {
+      return (leftValue - rightValue) * direction;
+    }
+
+    return (left.monthNumber - right.monthNumber);
+  });
+}
+
+function renderDebtProjectionResults(projection) {
+  const results = document.getElementById('debt-results');
+
+  if (projection.error) {
+    results.innerHTML = `
+      <div class="empty-state debt-empty-state">
+        <h4>Projection unavailable</h4>
+        <p>${escapeHtml(projection.error)}</p>
+      </div>
+    `;
+    return;
+  }
+
+  const visibleRows = getSortedDebtAmortizationRows(projection.schedule).slice(0, 360);
+  const paymentFrequencyLabel = getDebtPaymentFrequencyLabel(projection.paymentFrequency.value);
+
+  results.innerHTML = `
+    <div class="debt-summary-grid">
+      <article class="hero-card">
+        <p class="hero-label">Payment Amount</p>
+        <h3>${formatCurrency(projection.scheduledPayment)}</h3>
+        <p class="hero-copy">Paid ${escapeHtml(paymentFrequencyLabel)}. Includes ${formatCurrency(projection.extraPayment)} extra.</p>
+      </article>
+      <article class="hero-card">
+        <p class="hero-label">Payoff</p>
+        <h3>${formatPayoffDuration(projection.payoffMonths)}</h3>
+        <p class="hero-copy">${formatDate(buildLocalDateValue(projection.payoffDate))}</p>
+      </article>
+      <article class="hero-card">
+        <p class="hero-label">Interest</p>
+        <h3>${formatCurrency(projection.totalInterest)}</h3>
+        <p class="hero-copy">Total estimated interest.</p>
+      </article>
+      <article class="hero-card">
+        <p class="hero-label">Total Paid</p>
+        <h3>${formatCurrency(projection.totalPaid)}</h3>
+        <p class="hero-copy">Principal plus interest.</p>
+      </article>
+    </div>
+    <div class="debt-amortization-shell">
+      <div class="debt-amortization-table">
+        <div class="debt-amortization-row debt-amortization-head">
+          <div><button type="button" class="debt-sort-button" data-sort-key="monthNumber">Payment${getDebtSortIndicator('monthNumber')}</button></div>
+          <div><button type="button" class="debt-sort-button" data-sort-key="date">Date${getDebtSortIndicator('date')}</button></div>
+          <div><button type="button" class="debt-sort-button" data-sort-key="payment">Payment${getDebtSortIndicator('payment')}</button></div>
+          <div><button type="button" class="debt-sort-button" data-sort-key="principal">Principal${getDebtSortIndicator('principal')}</button></div>
+          <div><button type="button" class="debt-sort-button" data-sort-key="interest">Interest${getDebtSortIndicator('interest')}</button></div>
+          <div><button type="button" class="debt-sort-button" data-sort-key="balance">Balance${getDebtSortIndicator('balance')}</button></div>
+        </div>
+        ${visibleRows.map(row => `
+          <div class="debt-amortization-row">
+            <div>${row.monthNumber}</div>
+            <div>${escapeHtml(formatDate(buildLocalDateValue(row.date)))}</div>
+            <div class="amount">${formatCurrency(row.payment)}</div>
+            <div class="amount positive">${formatCurrency(row.principal)}</div>
+            <div class="amount negative">${formatCurrency(row.interest)}</div>
+            <div class="amount">${formatCurrency(row.balance)}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function updateDebtProjection() {
+  renderDebtProjectionResults(buildLoanPayoffProjection(readDebtPlannerValues()));
+}
+
+function buildDebtCompoundingOptions(selectedValue = 'monthly') {
+  return DEBT_COMPOUNDING_OPTIONS.map(option => `
+    <option value="${escapeHtml(option.value)}" ${option.value === selectedValue ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+  `).join('');
+}
+
+function buildDebtRateTypeOptions(selectedValue = 'apr') {
+  return DEBT_RATE_TYPE_OPTIONS.map(option => `
+    <option value="${escapeHtml(option.value)}" ${option.value === selectedValue ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+  `).join('');
+}
+
+function buildDebtPaymentFrequencyOptions(selectedValue = 'monthly') {
+  return DEBT_PAYMENT_FREQUENCY_OPTIONS.map(option => `
+    <option value="${escapeHtml(option.value)}" ${option.value === selectedValue ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+  `).join('');
+}
+
+function getDebtDefaultSettingsForAccount(account = null) {
+  const accountType = account ? inferAccountType(account) : '';
+  const normalizedName = String(account?.name || '').toLowerCase();
+
+  if (accountType === 'creditCard') {
+    return { rateType: 'apr', compounding: 'daily', paymentFrequency: 'monthly' };
+  }
+
+  if (normalizedName.includes('student')) {
+    return { rateType: 'apr', compounding: 'daily', paymentFrequency: 'monthly' };
+  }
+
+  return { rateType: 'apr', compounding: 'monthly', paymentFrequency: 'monthly' };
+}
+
+function applyDebtAdvancedDefaults(defaults) {
+  document.getElementById('debt-rate-type').value = defaults.rateType;
+  document.getElementById('debt-compounding').value = defaults.compounding;
+  document.getElementById('debt-payment-frequency').value = defaults.paymentFrequency;
+  debtCalculatorState.rateType = defaults.rateType;
+  debtCalculatorState.compounding = defaults.compounding;
+  debtCalculatorState.paymentFrequency = defaults.paymentFrequency;
+}
+
+async function loadDebtPlanner() {
+  const accounts = sortItemsForDisplay(await cache.getAll('accounts'));
+  const debtAccounts = accounts.filter(account => isDebtAccount(account));
+  const view = document.getElementById('debt-view');
+  const selectedAccount = debtAccounts.find(account => account.id === debtCalculatorState.selectedAccountId) || debtAccounts[0] || null;
+  const principal = selectedAccount ? getAccountDebtAmount(selectedAccount) : 10000;
+  const defaultSettings = getDebtDefaultSettingsForAccount(selectedAccount);
+  const advancedSettings = debtCalculatorState.advancedSettingsTouched
+    ? {
+        rateType: debtCalculatorState.rateType,
+        compounding: debtCalculatorState.compounding,
+        paymentFrequency: debtCalculatorState.paymentFrequency
+      }
+    : defaultSettings;
+
+  if (!debtCalculatorState.advancedSettingsTouched) {
+    Object.assign(debtCalculatorState, advancedSettings);
+  }
+
+  if (selectedAccount) {
+    debtCalculatorState.selectedAccountId = selectedAccount.id;
+  }
+
+  view.innerHTML = `
+    <div class="debt-layout">
+      <form id="debt-calculator-form" class="debt-calculator-form stack-form">
+        <label>
+          <span>Debt Account</span>
+          <select id="debt-account-select">
+            <option value="">Manual calculator</option>
+            ${debtAccounts.map(account => `
+              <option value="${escapeHtml(account.id)}" ${selectedAccount?.id === account.id ? 'selected' : ''}>
+                ${escapeHtml(account.name)} (${escapeHtml(getAccountTypeLabel(account))})
+              </option>
+            `).join('')}
+          </select>
+        </label>
+        <div class="form-row">
+          <label>
+            <span>Current Balance</span>
+            <input type="number" id="debt-principal" min="0" step="0.01" value="${escapeHtml(formatDecimalInputValue(principal))}" placeholder="0.00">
+          </label>
+          <label>
+            <span>Interest Rate</span>
+            <input type="number" id="debt-rate" min="0" step="0.001" value="6.5" placeholder="0.00">
+          </label>
+        </div>
+        <hr class="form-divider">
+        <div class="debt-advanced-settings-header">
+          <button type="button" class="collapse-toggle debt-settings-toggle ${isAdvancedDebtSettingsExpanded ? 'expanded' : ''}" onclick="toggleAdvancedDebtSettings()" aria-label="Toggle advanced settings" aria-expanded="${isAdvancedDebtSettingsExpanded}" title="Toggle advanced settings">
+            ${getActionIcon('chevron')}
+          </button>
+          <p class="eyebrow">Advanced Options</p>
+        </div>
+        <div class="debt-advanced-settings ${isAdvancedDebtSettingsExpanded ? 'expanded' : 'collapsed'}" id="debt-advanced-settings-content">
+          <label>
+            <span>Rate Type</span>
+            <select id="debt-rate-type">${buildDebtRateTypeOptions(advancedSettings.rateType)}</select>
+          </label>
+          <label>
+            <span>Interest Compounds</span>
+            <select id="debt-compounding">${buildDebtCompoundingOptions(advancedSettings.compounding)}</select>
+          </label>
+          <label>
+            <span>Payments Made</span>
+            <select id="debt-payment-frequency">${buildDebtPaymentFrequencyOptions(advancedSettings.paymentFrequency)}</select>
+          </label>
+        </div>
+        <hr class="form-divider">
+        <label class="half-width-field">
+          <span>Start Date</span>
+          <input type="date" id="debt-start-date" value="${escapeHtml(getTodayDateValue())}">
+        </label>
+        <div class="debt-form-divider" aria-hidden="true"></div>
+        <div class="form-row">
+          <label>
+            <span>Term Months</span>
+            <input type="number" id="debt-term-months" min="1" step="1" value="60" placeholder="60">
+          </label>
+          <label>
+            <span>Payoff Date</span>
+            <input type="date" id="debt-payoff-date">
+          </label>
+        </div>
+        <div class="form-row">
+          <label>
+            <span>Payment Amount</span>
+            <input type="number" id="debt-payment-amount" min="0" step="0.01" placeholder="Auto from term">
+          </label>
+          <label>
+            <span>Extra Payment</span>
+            <input type="number" id="debt-extra-payment" min="0" step="0.01" value="0.00" placeholder="0.00">
+          </label>
+        </div>
+        <div class="button-row">
+          <button type="submit" class="primary-button">Calculate</button>
+        </div>
+      </form>
+      <div id="debt-results" class="debt-results"></div>
+    </div>
+  `;
+
+  updateDebtProjection();
+}
+
 async function loadReports() {
   const [transactions, budgetAllocations, categories, subCategories] = await Promise.all([
     cache.getAll('transactions'),
@@ -5588,7 +6108,7 @@ async function editAccount(accountId) {
   document.getElementById('acc-name').value = account.name || '';
   document.getElementById('acc-desc').value = account.description || '';
   document.getElementById('acc-type').value = inferAccountType(account);
-  document.getElementById('acc-start').value = Math.abs(getAccountBalance(account, 'startingBalance')) || '';
+  document.getElementById('acc-start').value = formatDecimalInputValue(Math.abs(getAccountBalance(account, 'startingBalance')));
   document.getElementById('acc-off').checked = Boolean(account.offBudget);
   document.getElementById('acc-active').checked = account.active !== false;
   setAccountFormMode(true);
@@ -5827,6 +6347,7 @@ window.onload = () => {
   window.confirmDeleteAccount = confirmDeleteAccount;
   window.editCategory = editCategory;
   window.toggleCategoryExpansion = toggleCategoryExpansion;
+  window.toggleAdvancedDebtSettings = toggleAdvancedDebtSettings;
   window.startAddSubCategory = startAddSubCategory;
   window.editSubCategory = editSubCategory;
   window.confirmDeleteCategory = confirmDeleteCategory;
@@ -6453,6 +6974,86 @@ window.onload = () => {
         { note: e.target.value }
       );
     }
+  });
+  document.getElementById('debt-view').addEventListener('submit', (e) => {
+    if (!e.target.matches('#debt-calculator-form')) {
+      return;
+    }
+
+    e.preventDefault();
+    updateDebtProjection();
+  });
+  document.getElementById('debt-view').addEventListener('input', (e) => {
+    if (e.target.closest('#debt-calculator-form')) {
+      updateDebtProjection();
+    }
+  });
+  document.getElementById('debt-view').addEventListener('change', async (e) => {
+    if (e.target.matches('#debt-rate-type, #debt-compounding, #debt-payment-frequency')) {
+      debtCalculatorState.advancedSettingsTouched = true;
+      debtCalculatorState.rateType = document.getElementById('debt-rate-type').value;
+      debtCalculatorState.compounding = document.getElementById('debt-compounding').value;
+      debtCalculatorState.paymentFrequency = document.getElementById('debt-payment-frequency').value;
+      updateDebtProjection();
+      return;
+    }
+
+    if (!e.target.matches('#debt-account-select')) {
+      if (e.target.closest('#debt-calculator-form')) {
+        updateDebtProjection();
+      }
+      return;
+    }
+
+    debtCalculatorState.selectedAccountId = e.target.value;
+
+    if (!e.target.value) {
+      if (!debtCalculatorState.advancedSettingsTouched) {
+        applyDebtAdvancedDefaults(getDebtDefaultSettingsForAccount(null));
+      }
+
+      updateDebtProjection();
+      return;
+    }
+
+    const accounts = await cache.getAll('accounts');
+    const account = accounts.find(entry => entry.id === e.target.value);
+
+    if (account) {
+      document.getElementById('debt-principal').value = formatDecimalInputValue(getAccountDebtAmount(account));
+
+      if (!debtCalculatorState.advancedSettingsTouched) {
+        applyDebtAdvancedDefaults(getDebtDefaultSettingsForAccount(account));
+      }
+    } else if (!debtCalculatorState.advancedSettingsTouched) {
+      applyDebtAdvancedDefaults(getDebtDefaultSettingsForAccount(null));
+    }
+
+    updateDebtProjection();
+  });
+  document.getElementById('debt-view').addEventListener('click', (e) => {
+    const sortButton = e.target.closest('.debt-sort-button');
+
+    if (!sortButton) {
+      return;
+    }
+
+    const { sortKey } = sortButton.dataset;
+
+    if (debtCalculatorState.sortKey !== sortKey) {
+      debtCalculatorState.sortKey = sortKey;
+      debtCalculatorState.sortDirection = 'asc';
+    } else if (debtCalculatorState.sortDirection === 'asc') {
+      debtCalculatorState.sortDirection = 'desc';
+    } else if (debtCalculatorState.sortDirection === 'desc') {
+      debtCalculatorState.sortKey = '';
+      debtCalculatorState.sortDirection = '';
+    } else {
+      debtCalculatorState.sortKey = sortKey;
+      debtCalculatorState.sortDirection = 'asc';
+    }
+
+    updateDebtProjection();
   });
   initializeSidebarPreference();
   showAuthShell();

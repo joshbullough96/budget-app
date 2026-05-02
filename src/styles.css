@@ -2368,6 +2368,151 @@ select.txn-input {
   opacity: 0.84;
 }
 
+.debt-workspace {
+  min-width: 0;
+}
+
+.debt-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.debt-calculator-form {
+  min-width: 0;
+  padding: 0.95rem;
+  border: 1px solid rgba(22, 51, 49, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 253, 248, 0.9);
+}
+
+.debt-form-divider {
+  height: 1px;
+  margin: 0.15rem 0;
+  background: rgba(22, 51, 49, 0.1);
+}
+
+.debt-advanced-settings-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0;
+  cursor: pointer;
+}
+
+.debt-advanced-settings-header .eyebrow {
+  margin: 0;
+  cursor: pointer;
+}
+
+.debt-settings-toggle {
+  flex-shrink: 0;
+}
+
+.debt-advanced-settings {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.65rem 0;
+  max-height: 500px;
+  overflow: hidden;
+  transition: max-height 200ms ease, opacity 200ms ease;
+  opacity: 1;
+}
+
+.debt-advanced-settings.collapsed {
+  max-height: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.form-divider {
+  height: 1px;
+  margin: 0.5rem 0;
+  background: rgba(22, 51, 49, 0.1);
+  border: none;
+}
+
+.debt-results {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.debt-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.debt-summary-grid .hero-card {
+  padding: 0.75rem 0.82rem;
+  border-radius: 16px;
+}
+
+.debt-summary-grid .hero-card h3 {
+  font-size: clamp(1.1rem, 1.5vw, 1.45rem);
+}
+
+.debt-amortization-shell {
+  max-height: calc(100vh - 25rem);
+  min-height: 16rem;
+  overflow: auto;
+  border: 1px solid rgba(22, 51, 49, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 253, 248, 0.9);
+}
+
+.debt-amortization-table {
+  min-width: 720px;
+}
+
+.debt-amortization-row {
+  display: grid;
+  grid-template-columns: 72px 120px repeat(4, minmax(110px, 1fr));
+  gap: 0.45rem;
+  align-items: center;
+  padding: 0.45rem 0.65rem;
+  border-top: 1px solid rgba(22, 51, 49, 0.07);
+  font-size: 0.84rem;
+}
+
+.debt-amortization-row > :not(:first-child) {
+  min-width: 0;
+}
+
+.debt-amortization-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  border-top: none;
+  background: #f4f1eb;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: 0 1px 0 rgba(22, 51, 49, 0.08), 0 10px 16px rgba(255, 253, 248, 0.92);
+}
+
+.debt-sort-button {
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.debt-empty-state {
+  min-height: 18rem;
+}
+
 .report-pie-hole {
   position: absolute;
   inset: 22%;
@@ -3133,6 +3278,15 @@ select.txn-input {
 
   .reports-grid {
     grid-template-columns: 1fr;
+  }
+
+  .debt-layout,
+  .debt-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .debt-amortization-shell {
+    max-height: none;
   }
 
   .report-card-wide {

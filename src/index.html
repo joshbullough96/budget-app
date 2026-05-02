@@ -323,6 +323,10 @@
           <span class="nav-label">Budget</span>
           <span class="nav-hint">Monthly Allocation</span>
         </button>
+        <button class="nav-button" data-section="debt" data-short="D" onclick="showSection('debt')" title="Debt">
+          <span class="nav-label">Debt</span>
+          <span class="nav-hint">Loan payoff</span>
+        </button>
         <button class="nav-button" data-section="reports" data-short="R" onclick="showSection('reports')"
           title="Reports">
           <span class="nav-label">Reports</span>
@@ -612,6 +616,19 @@
             <div id="budget-view" class="budget-workspace"></div>
           </section>
         </div>
+      </div>
+
+      <div id="debt" class="section">
+        <section class="panel single-panel">
+          <div class="panel-heading debt-heading">
+            <div class="transactions-heading-copy">
+              <p class="eyebrow">Debt</p>
+              <h3>Loan payoff planner</h3>
+              <p class="panel-hint">Model payoff timing, interest, and total cost without changing your ledger.</p>
+            </div>
+          </div>
+          <div id="debt-view" class="debt-workspace"></div>
+        </section>
       </div>
 
       <div id="reports" class="section">
