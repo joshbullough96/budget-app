@@ -133,7 +133,9 @@ let debtCalculatorState = {
   compounding: 'monthly',
   paymentFrequency: 'monthly',
   sortKey: 'date',
-  sortDirection: 'asc'
+  sortDirection: 'asc',
+  calculatorMode: 'payoff',
+  termType: 'months'
 };
 
 const DEBT_RATE_TYPE_OPTIONS = [
@@ -1355,6 +1357,15 @@ function toggleAdvancedDebtSettings() {
     content.classList.toggle('expanded', isAdvancedDebtSettingsExpanded);
     content.classList.toggle('collapsed', !isAdvancedDebtSettingsExpanded);
   }
+}
+
+function switchDebtCalculatorMode(mode) {
+  if (debtCalculatorState.calculatorMode === mode) {
+    return;
+  }
+  
+  debtCalculatorState.calculatorMode = mode;
+  loadDebtPlanner();
 }
 
 async function loadTransactions() {
@@ -5460,18 +5471,70 @@ function buildLoanPayoffProjection(values) {
 }
 
 function readDebtPlannerValues() {
+  let principal;
+  
+  if (debtCalculatorState.calculatorMode === 'newLoan') {
+    const loanAmount = parseFloat(document.getElementById('debt-loan-amount').value) || 0;
+    const downPayment = parseFloat(document.getElementById('debt-down-payment').value) || 0;
+    principal = loanAmount - downPayment;
+  } else {
+    principal = parseFloat(document.getElementById('debt-principal').value);
+  }
+  
+  const termValue = parseFloat(document.getElementById('debt-term-amount').value);
+  const termType = document.getElementById('debt-term-type').value;
+  const termMonths = convertTermToMonths(termValue, termType);
+  
   return {
-    principal: parseFloat(document.getElementById('debt-principal').value),
+    principal,
     annualRate: parseFloat(document.getElementById('debt-rate').value),
     rateType: document.getElementById('debt-rate-type').value,
     compounding: document.getElementById('debt-compounding').value,
     paymentFrequency: document.getElementById('debt-payment-frequency').value,
-    termMonths: parseFloat(document.getElementById('debt-term-months').value),
+    termMonths,
     payoffDate: document.getElementById('debt-payoff-date').value,
     paymentAmount: parseFloat(document.getElementById('debt-payment-amount').value),
     extraPayment: parseFloat(document.getElementById('debt-extra-payment').value),
     startDate: document.getElementById('debt-start-date').value || getTodayDateValue()
   };
+}
+
+function convertTermToMonths(termValue, termType) {
+  const term = Math.max(0, Number(termValue || 0));
+  
+  switch (termType) {
+    case 'weeks':
+      return Math.round(term * 52 / 12);
+    case 'years':
+      return Math.round(term * 12);
+    case 'months':
+    default:
+      return Math.round(term);
+  }
+}
+
+function calculatePayoffDate(startDate, termMonths, paymentFrequency = 'monthly') {
+  if (!startDate || !termMonths || termMonths <= 0) {
+    return '';
+  }
+  
+  const start = typeof startDate === 'string' ? parseDateValue(startDate) : startDate;
+  const payFreq = getDebtPaymentFrequencyOption(paymentFrequency);
+  const payoffDateObj = addPaymentPeriodsToDate(start, Math.ceil(termMonths / (12 / payFreq.paymentsPerYear)) - 1, paymentFrequency);
+  
+  return buildLocalDateValue(payoffDateObj);
+}
+
+function updatePayoffDateFromTerm() {
+  const startDate = document.getElementById('debt-start-date').value;
+  const termValue = document.getElementById('debt-term-amount').value;
+  const termType = document.getElementById('debt-term-type').value;
+  const paymentFrequency = document.getElementById('debt-payment-frequency').value;
+  
+  const termMonths = convertTermToMonths(termValue, termType);
+  const payoffDate = calculatePayoffDate(startDate, termMonths, paymentFrequency);
+  
+  document.getElementById('debt-payoff-date').value = payoffDate;
 }
 
 function formatPayoffDuration(months) {
@@ -5660,9 +5723,35 @@ async function loadDebtPlanner() {
     debtCalculatorState.selectedAccountId = selectedAccount.id;
   }
 
+  const isNewLoanMode = debtCalculatorState.calculatorMode === 'newLoan';
+  const principalFieldsHtml = isNewLoanMode ? `
+        <div class="form-row">
+          <label>
+            <span>Loan Amount</span>
+            <input type="number" id="debt-loan-amount" min="0" step="0.01" value="50000" placeholder="0.00">
+          </label>
+          <label>
+            <span>Down Payment</span>
+            <input type="number" id="debt-down-payment" min="0" step="0.01" value="10000" placeholder="0.00">
+          </label>
+        </div>
+  ` : `
+        <div class="form-row">
+          <label>
+            <span>Current Balance</span>
+            <input type="number" id="debt-principal" min="0" step="0.01" value="${escapeHtml(formatDecimalInputValue(principal))}" placeholder="0.00">
+          </label>
+        </div>
+  `;
+
   view.innerHTML = `
     <div class="debt-layout">
       <form id="debt-calculator-form" class="debt-calculator-form stack-form">
+        <div class="debt-mode-toggle">
+          <button type="button" class="mode-button ${!isNewLoanMode ? 'active' : ''}" onclick="switchDebtCalculatorMode('payoff')">Payoff Existing Debt</button>
+          <button type="button" class="mode-button ${isNewLoanMode ? 'active' : ''}" onclick="switchDebtCalculatorMode('newLoan')">Calculate New Loan</button>
+        </div>
+        ${isNewLoanMode ? '' : `
         <label>
           <span>Debt Account</span>
           <select id="debt-account-select">
@@ -5674,13 +5763,11 @@ async function loadDebtPlanner() {
             `).join('')}
           </select>
         </label>
+        `}
+        ${principalFieldsHtml}
         <div class="form-row">
           <label>
-            <span>Current Balance</span>
-            <input type="number" id="debt-principal" min="0" step="0.01" value="${escapeHtml(formatDecimalInputValue(principal))}" placeholder="0.00">
-          </label>
-          <label>
-            <span>Interest Rate</span>
+            <span>Interest Rate %</span>
             <input type="number" id="debt-rate" min="0" step="0.001" value="6.5" placeholder="0.00">
           </label>
         </div>
@@ -5708,8 +5795,16 @@ async function loadDebtPlanner() {
         <div class="debt-form-divider" aria-hidden="true"></div>
         <div class="form-row">
           <label>
-            <span>Term Months</span>
-            <input type="number" id="debt-term-months" min="1" step="1" value="60" placeholder="60">
+            <span>Term Type</span>
+            <select id="debt-term-type">
+              <option value="weeks">Weeks</option>
+              <option value="months" selected>Months</option>
+              <option value="years">Years</option>
+            </select>
+          </label>
+          <label>
+            <span>Term Amount</span>
+            <input type="number" id="debt-term-amount" min="1" step="1" value="60" placeholder="60">
           </label>
         </div>
         <div class="form-row">
@@ -5740,6 +5835,7 @@ async function loadDebtPlanner() {
     </div>
   `;
 
+  updatePayoffDateFromTerm();
   updateDebtProjection();
 }
 
@@ -6349,6 +6445,7 @@ window.onload = () => {
   window.editCategory = editCategory;
   window.toggleCategoryExpansion = toggleCategoryExpansion;
   window.toggleAdvancedDebtSettings = toggleAdvancedDebtSettings;
+  window.switchDebtCalculatorMode = switchDebtCalculatorMode;
   window.startAddSubCategory = startAddSubCategory;
   window.editSubCategory = editSubCategory;
   window.confirmDeleteCategory = confirmDeleteCategory;
@@ -6986,15 +7083,32 @@ window.onload = () => {
   });
   document.getElementById('debt-view').addEventListener('input', (e) => {
     if (e.target.closest('#debt-calculator-form')) {
+      // Update payoff date when term amount or start date changes
+      if (e.target.matches('#debt-term-amount, #debt-start-date')) {
+        updatePayoffDateFromTerm();
+      }
       updateDebtProjection();
     }
   });
   document.getElementById('debt-view').addEventListener('change', async (e) => {
+    if (e.target.matches('#debt-term-type')) {
+      debtCalculatorState.termType = e.target.value;
+      updatePayoffDateFromTerm();
+      updateDebtProjection();
+      return;
+    }
+
     if (e.target.matches('#debt-rate-type, #debt-compounding, #debt-payment-frequency')) {
       debtCalculatorState.advancedSettingsTouched = true;
       debtCalculatorState.rateType = document.getElementById('debt-rate-type').value;
       debtCalculatorState.compounding = document.getElementById('debt-compounding').value;
       debtCalculatorState.paymentFrequency = document.getElementById('debt-payment-frequency').value;
+      
+      // Update payoff date when payment frequency changes
+      if (e.target.matches('#debt-payment-frequency')) {
+        updatePayoffDateFromTerm();
+      }
+      
       updateDebtProjection();
       return;
     }
@@ -7006,9 +7120,16 @@ window.onload = () => {
       return;
     }
 
+    // Account select handler - only in payoff mode
+    if (debtCalculatorState.calculatorMode !== 'payoff') {
+      return;
+    }
+
     debtCalculatorState.selectedAccountId = e.target.value;
 
     if (!e.target.value) {
+      document.getElementById('debt-principal').value = '';
+      
       if (!debtCalculatorState.advancedSettingsTouched) {
         applyDebtAdvancedDefaults(getDebtDefaultSettingsForAccount(null));
       }

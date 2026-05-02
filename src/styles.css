@@ -2387,6 +2387,36 @@ select.txn-input {
   background: rgba(255, 253, 248, 0.9);
 }
 
+.debt-mode-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(22, 51, 49, 0.1);
+  padding-bottom: 0.75rem;
+}
+
+.mode-button {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.mode-button:hover {
+  color: var(--text);
+}
+
+.mode-button.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
 .debt-form-divider {
   height: 1px;
   margin: 0.15rem 0;
