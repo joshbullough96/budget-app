@@ -1036,7 +1036,7 @@ async function loadAccountsLegacy() {
     list.innerHTML = `
       <div class="empty-state">
         <h4>No accounts yet</h4>
-        <p>Add your checking, savings, cash, or credit card accounts to see your cash position here.</p>
+        <p>Add your checking, savings, cash, credit card, or loan accounts to see your cash position here.</p>
       </div>
     `;
     updateDashboardStats(accounts, null);
@@ -1044,12 +1044,14 @@ async function loadAccountsLegacy() {
   }
 
   list.innerHTML = accounts.map(acc => {
-    const currentBalance = formatCurrency(acc.currentBalance);
-    const startingBalance = formatCurrency(acc.startingBalance);
+    const currentBalanceValue = getAccountBalance(acc, 'currentBalance');
+    const startingBalanceValue = getAccountBalance(acc, 'startingBalance');
+    const currentBalance = formatCurrency(currentBalanceValue);
+    const startingBalance = formatCurrency(startingBalanceValue);
     const isActive = acc.active !== false;
     const budgetStatus = acc.offBudget ? 'Off Budget' : 'On Budget';
     const accountStatus = isActive ? `Active • ${budgetStatus}` : `Inactive • ${budgetStatus}`;
-    const amountClass = acc.currentBalance >= 0 ? 'positive' : 'negative';
+    const amountClass = currentBalanceValue >= 0 ? 'positive' : 'negative';
     const descriptionMarkup = acc.description
       ? `<p class="data-card-note">${escapeHtml(acc.description)}</p>`
       : '';
@@ -1095,7 +1097,7 @@ async function loadAccounts() {
     list.innerHTML = `
       <div class="empty-state">
         <h4>No accounts yet</h4>
-        <p>Add your checking, savings, cash, or credit card accounts to see your cash position here.</p>
+        <p>Add your checking, savings, cash, credit card, or loan accounts to see your cash position here.</p>
       </div>
     `;
     updateDashboardStats(accounts, null);
@@ -1103,13 +1105,15 @@ async function loadAccounts() {
   }
 
   list.innerHTML = accounts.map(acc => {
-    const currentBalance = formatCurrency(acc.currentBalance);
-    const startingBalance = formatCurrency(acc.startingBalance);
+    const currentBalanceValue = getAccountBalance(acc, 'currentBalance');
+    const startingBalanceValue = getAccountBalance(acc, 'startingBalance');
+    const currentBalance = formatCurrency(currentBalanceValue);
+    const startingBalance = formatCurrency(startingBalanceValue);
     const isActive = acc.active !== false;
     const budgetStatus = acc.offBudget ? 'Off Budget' : 'On Budget';
     const accountStatus = isActive ? `Active &bull; ${budgetStatus}` : `Inactive &bull; ${budgetStatus}`;
     const accountTypeLabel = getAccountTypeLabel(acc);
-    const amountClass = acc.currentBalance >= 0 ? 'positive' : 'negative';
+    const amountClass = currentBalanceValue >= 0 ? 'positive' : 'negative';
     const descriptionMarkup = acc.description
       ? `<p class="data-card-note">${escapeHtml(acc.description)}</p>`
       : '';
@@ -1845,7 +1849,7 @@ function buildBudgetMonthlySummary(context, month, groups) {
         }
 
         return accountSum + Number(transaction.amount || 0);
-      }, Number(account.startingBalance || 0));
+      }, getAccountBalance(account, 'startingBalance'));
 
       return sum + accountBalance;
     }, 0);
@@ -2443,9 +2447,10 @@ async function refreshDashboard() {
 function updateDashboardStats(accounts, categories, subCategories) {
   if (accounts) {
     const activeAccounts = accounts.filter(acc => acc.active !== false);
-    const totalCash = activeAccounts.reduce((sum, acc) => sum + Number(acc.currentBalance || 0), 0);
+    const netWorth = activeAccounts
+      .reduce((sum, acc) => sum + getAccountBalance(acc, 'currentBalance'), 0);
 
-    document.getElementById('total-cash').textContent = formatCurrency(totalCash);
+    document.getElementById('total-cash').textContent = formatCurrency(netWorth);
     document.getElementById('account-count').textContent = activeAccounts.length.toString();
   }
 
@@ -2590,7 +2595,13 @@ function resetAccountForm() {
 
 function syncAccountTypeDefaultBudgeting() {
   const selectedType = normalizeAccountType(document.getElementById('acc-type').value);
+  const startInput = document.getElementById('acc-start');
+
   document.getElementById('acc-off').checked = getDefaultOffBudgetForAccountType(selectedType);
+
+  if (isDebtAccountType(selectedType) && Number(startInput.value || 0) < 0) {
+    startInput.value = Math.abs(Number(startInput.value));
+  }
 }
 
 function readRecurringFormValues() {
@@ -3248,6 +3259,7 @@ const ACCOUNT_TYPE_LABELS = {
   creditCard: 'Credit Card',
   savings: 'Savings',
   investment: 'Investment',
+  loan: 'Loan',
   asset: 'Asset'
 };
 
@@ -3257,8 +3269,11 @@ const ACCOUNT_TYPE_DEFAULT_OFF_BUDGET = {
   creditCard: false,
   savings: false,
   investment: true,
+  loan: false,
   asset: true
 };
+
+const DEBT_ACCOUNT_TYPES = new Set(['creditCard', 'loan']);
 
 function normalizeAccountType(rawType) {
   if (Object.prototype.hasOwnProperty.call(ACCOUNT_TYPE_LABELS, rawType)) {
@@ -3266,6 +3281,36 @@ function normalizeAccountType(rawType) {
   }
 
   return 'checking';
+}
+
+function isDebtAccountType(accountType) {
+  return DEBT_ACCOUNT_TYPES.has(normalizeAccountType(accountType));
+}
+
+function isDebtAccount(account = {}) {
+  return isDebtAccountType(inferAccountType(account));
+}
+
+function normalizeAccountBalanceForType(balance, accountType) {
+  const numericBalance = Number(balance || 0);
+
+  if (!Number.isFinite(numericBalance) || numericBalance === 0) {
+    return 0;
+  }
+
+  return isDebtAccountType(accountType) ? -Math.abs(numericBalance) : numericBalance;
+}
+
+function getAccountBalance(account = {}, key = 'currentBalance') {
+  const numericBalance = Number(account[key] || 0);
+
+  if (!Number.isFinite(numericBalance)) {
+    return 0;
+  }
+
+  return key === 'startingBalance'
+    ? normalizeAccountBalanceForType(numericBalance, inferAccountType(account))
+    : numericBalance;
 }
 
 function getDefaultOffBudgetForAccountType(accountType) {
@@ -3281,6 +3326,10 @@ function inferAccountType(account = {}) {
 
   if (normalizedName.includes('credit')) {
     return 'creditCard';
+  }
+
+  if (normalizedName.includes('loan') || normalizedName.includes('mortgage')) {
+    return 'loan';
   }
 
   if (normalizedName.includes('saving')) {
@@ -3815,7 +3864,7 @@ async function syncTransactionDerivedState(accountIds = null) {
         .filter(transaction => transaction.accountId === account.id)
         .slice()
         .sort(compareTransactionsForRunningBalance);
-      let runningBalance = Number(account.startingBalance || 0);
+      let runningBalance = getAccountBalance(account, 'startingBalance');
 
       accountTransactions.forEach(transaction => {
         if (transaction.pending) {
@@ -4478,8 +4527,8 @@ async function exportAccountsCsv() {
       account.name || '',
       account.description || '',
       getAccountTypeLabel(account),
-      Number(account.startingBalance || 0).toFixed(2),
-      Number(account.currentBalance || 0).toFixed(2),
+      getAccountBalance(account, 'startingBalance').toFixed(2),
+      getAccountBalance(account, 'currentBalance').toFixed(2),
       account.offBudget ? 'Off Budget' : 'On Budget',
       account.active === false ? 'Inactive' : 'Active',
       Number.isFinite(account.sortOrder) ? account.sortOrder : '',
@@ -5539,7 +5588,7 @@ async function editAccount(accountId) {
   document.getElementById('acc-name').value = account.name || '';
   document.getElementById('acc-desc').value = account.description || '';
   document.getElementById('acc-type').value = inferAccountType(account);
-  document.getElementById('acc-start').value = Number(account.startingBalance || 0);
+  document.getElementById('acc-start').value = Math.abs(getAccountBalance(account, 'startingBalance')) || '';
   document.getElementById('acc-off').checked = Boolean(account.offBudget);
   document.getElementById('acc-active').checked = account.active !== false;
   setAccountFormMode(true);
@@ -5977,7 +6026,7 @@ window.onload = () => {
     const name = document.getElementById('acc-name').value;
     const desc = document.getElementById('acc-desc').value;
     const accountType = normalizeAccountType(document.getElementById('acc-type').value);
-    const start = parseFloat(document.getElementById('acc-start').value);
+    const start = normalizeAccountBalanceForType(parseFloat(document.getElementById('acc-start').value), accountType);
     const off = document.getElementById('acc-off').checked;
     const active = document.getElementById('acc-active').checked;
 

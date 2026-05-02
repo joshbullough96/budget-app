@@ -346,9 +346,9 @@
         </div>
         <article class="topbar-summary-card balance-card">
           <div class="topbar-summary-item topbar-summary-item-cash">
-            <p class="hero-label">Total Cash</p>
+            <p class="hero-label">Net Worth</p>
             <strong id="total-cash">$0.00</strong>
-            <p class="topbar-summary-copy">Across active accounts.</p>
+            <p class="topbar-summary-copy">Active assets minus active debt.</p>
           </div>
           <div class="topbar-summary-item">
             <p class="hero-label">Accounts</p>
@@ -397,7 +397,7 @@
               <input type="hidden" id="acc-id">
               <label>
                 <span>Account Name</span>
-                <input type="text" id="acc-name" placeholder="Checking, Savings, Credit Card..." required>
+                <input type="text" id="acc-name" placeholder="Checking, Savings, Credit Card, Loan..." required>
               </label>
               <label>
                 <span>Description</span>
@@ -408,8 +408,9 @@
                 <select id="acc-type">
                   <option value="cash">Cash</option>
                   <option value="checking" selected>Checking</option>
-                  <option value="creditCard">Credit Card</option>
                   <option value="savings">Savings</option>
+                  <option value="creditCard">Credit Card</option>
+                  <option value="loan">Loan</option>
                   <option value="investment">Investment</option>
                   <option value="asset">Asset</option>
                 </select>

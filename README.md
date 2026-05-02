@@ -45,7 +45,7 @@ The budgeting workflow is intentionally opinionated:
 - Security-question-based recovery for forgotten passwords
 - Multiple budgets per user
 - Account management with:
-  - account types (`cash`, `checking`, `savings`, `creditCard`, `investment`, `asset`)
+  - account types (`cash`, `checking`, `savings`, `creditCard`, `loan`, `investment`, `asset`)
   - active/inactive state
   - on-budget/off-budget support
 - Category groups and subcategories with:
