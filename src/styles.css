@@ -1128,6 +1128,7 @@ h3 {
     align-content: start;
     min-height: 0;
     overflow: auto;
+    scrollbar-gutter: stable;
   }
 
   .app-shell[data-active-section="debt"] .debt-results {
@@ -2533,6 +2534,11 @@ select.txn-input {
   cursor: pointer;
 }
 
+.debt-advanced-settings-header.collapsed {
+  margin: -0.25rem 0;
+  padding: 0.2rem 0;
+}
+
 .debt-advanced-settings-header .eyebrow {
   margin: 0;
   cursor: pointer;
@@ -2558,6 +2564,10 @@ select.txn-input {
   padding: 0;
   opacity: 0;
   pointer-events: none;
+}
+
+.debt-advanced-settings.collapsed + .debt-form-divider {
+  margin: -0.35rem 0 0;
 }
 
 .form-divider {

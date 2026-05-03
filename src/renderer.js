@@ -1346,16 +1346,28 @@ async function toggleCategoryExpansion(categoryId) {
 function toggleAdvancedDebtSettings() {
   isAdvancedDebtSettingsExpanded = !isAdvancedDebtSettingsExpanded;
   const button = document.querySelector('.debt-settings-toggle');
+  const header = document.querySelector('.debt-advanced-settings-header');
   const content = document.getElementById('debt-advanced-settings-content');
+  const divider = document.querySelector('.debt-form-divider');
   
   if (button) {
     button.classList.toggle('expanded', isAdvancedDebtSettingsExpanded);
     button.setAttribute('aria-expanded', isAdvancedDebtSettingsExpanded);
   }
+
+  if (header) {
+    header.classList.toggle('expanded', isAdvancedDebtSettingsExpanded);
+    header.classList.toggle('collapsed', !isAdvancedDebtSettingsExpanded);
+  }
   
   if (content) {
     content.classList.toggle('expanded', isAdvancedDebtSettingsExpanded);
     content.classList.toggle('collapsed', !isAdvancedDebtSettingsExpanded);
+  }
+
+  if (divider) {
+    divider.classList.toggle('expanded', isAdvancedDebtSettingsExpanded);
+    divider.classList.toggle('collapsed', !isAdvancedDebtSettingsExpanded);
   }
 }
 
@@ -5779,7 +5791,7 @@ async function loadDebtPlanner() {
         ${principalFieldsHtml}
         ${rateFieldHtml}
         <hr class="form-divider">
-        <div class="debt-advanced-settings-header">
+        <div class="debt-advanced-settings-header ${isAdvancedDebtSettingsExpanded ? 'expanded' : 'collapsed'}">
           <button type="button" class="collapse-toggle debt-settings-toggle ${isAdvancedDebtSettingsExpanded ? 'expanded' : ''}" onclick="toggleAdvancedDebtSettings()" aria-label="Toggle advanced settings" aria-expanded="${isAdvancedDebtSettingsExpanded}" title="Toggle advanced settings">
             ${getActionIcon('chevron')}
           </button>
@@ -5799,7 +5811,7 @@ async function loadDebtPlanner() {
             <select id="debt-payment-frequency">${buildDebtPaymentFrequencyOptions(advancedSettings.paymentFrequency)}</select>
           </label>
         </div>
-        <div class="debt-form-divider" aria-hidden="true"></div>
+        <div class="debt-form-divider ${isAdvancedDebtSettingsExpanded ? 'expanded' : 'collapsed'}" aria-hidden="true"></div>
         <div class="form-row">
           <label>
             <span>Term Type</span>
