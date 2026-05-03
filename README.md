@@ -1,6 +1,6 @@
 # Budget App
 
-`budget-app` is a local-first desktop budgeting application built with Electron, plain JavaScript, NeDB, and a renderer-driven UI. It is designed around zero-based budgeting: track accounts, categorize transactions, schedule transfers, and assign money across budget lines by month.
+`budget-app` is a local-first desktop budgeting application built with Electron, plain JavaScript, NeDB, and a renderer-driven UI. It is designed around zero-based budgeting: track accounts and debt, categorize transactions, schedule transfers, assign money across budget lines by month, and model loan payoff scenarios without changing the ledger.
 
 Unlike a cloud budgeting tool, this app keeps profile and budget data on the local machine. Each user can have multiple budgets, and each budget gets its own local datastore.
 
@@ -8,12 +8,13 @@ Unlike a cloud budgeting tool, this app keeps profile and budget data on the loc
 
 - Local profiles with password protection and security-question recovery
 - Multiple budgets per user
-- Account types, active/inactive state, and on-budget/off-budget handling
+- Account types, active/inactive state, debt handling, and on-budget/off-budget behavior
 - Category groups and subcategories with recurring budget amounts
 - Savings buckets for long-term goals like car funds or down payments
 - Transactions with separate inflow/outflow entry, CSV import/export, and cleared reconciliation state
 - Transfers with scheduled/completed states and linked transaction syncing
 - Three-month budget editing workflow with monthly notes
+- Debt planner for payoff and new-loan scenarios, including APR/APY, compounding, payment frequency, and amortization
 - Reports for cash flow, budget-vs-actual, spend mix, and assigned-by-category allocation
 
 ## What The App Is For
@@ -24,11 +25,13 @@ This app is meant to help a user:
 - protect profile access with a password and security-question-based recovery
 - create multiple budgets under a profile
 - manage active and inactive accounts with on-budget and off-budget behavior
+- treat credit cards and loans as debt accounts while still allowing balances to cross positive if overpaid
 - organize category groups and subcategories for spending and savings goals
 - record, import, export, filter, and reconcile transactions
 - schedule or complete transfers between accounts
 - assign money to categories month by month
 - save up for longer-term goals through savings buckets
+- inspect debt payoff or new-loan projections without auto-creating transactions
 - review reports for cashflow, budget-vs-actual performance, spending mix, and budget allocation mix
 
 The budgeting workflow is intentionally opinionated:
@@ -63,7 +66,18 @@ The budgeting workflow is intentionally opinionated:
 - Three-month budget drafting workflow
 - Monthly notes on budget lines
 - Savings-bucket progress in the budget view
-- Drag-to-reorder support for budgets, accounts, categories, and subcategories
+- Net worth summary based on active account balances, where debt accounts naturally reduce the total
+- Debt planner with:
+  - payoff mode for existing debt accounts
+  - new-loan mode with loan amount and down payment
+  - APR/nominal annual rate or APY/effective annual rate input
+  - separate interest compounding and payment frequency settings
+  - payoff date, total interest, total paid, and amortization table output
+  - sortable amortization columns
+- Drag-to-reorder support
+  - budgets
+  - accounts
+  - categories and subcategories
 - Reporting for:
   - inflow vs outflow
   - budgeted vs actual
@@ -253,6 +267,45 @@ This separation is important:
 - budgeting data lives inside a budget-specific folder
 - switching budgets means switching the NeDB context, not filtering one giant shared database
 
+### Local data locations and clean uninstall
+
+The app stores profile and budget data under Electron's `userData` folder, then creates a `data/` directory inside it. Removing the app from the operating system may not remove this folder automatically.
+
+Common locations:
+
+```text
+Windows:
+C:\Users\<you>\AppData\Roaming\budget-app\data\
+
+macOS:
+/Users/<you>/Library/Application Support/Budget App/data/
+```
+
+Depending on whether the app is running from source or from a packaged build, Electron may use either the package name (`budget-app`) or the product name (`Budget App`) for the `userData` folder. If the folder above is not present, also check:
+
+```text
+Windows:
+C:\Users\<you>\AppData\Roaming\Budget App\data\
+
+macOS:
+/Users/<you>/Library/Application Support/budget-app/data/
+```
+
+For a clean uninstall:
+
+1. Quit Budget App completely.
+2. Uninstall the application normally.
+3. Remove the local app data folder if you want to delete all profiles, budgets, transactions, transfers, and settings:
+   - Windows: `C:\Users\<you>\AppData\Roaming\budget-app\`
+   - Windows alternate: `C:\Users\<you>\AppData\Roaming\Budget App\`
+   - macOS: `/Users/<you>/Library/Application Support/Budget App/`
+   - macOS alternate: `/Users/<you>/Library/Application Support/budget-app/`
+4. Remove packaged app files if they remain:
+   - Windows installer builds commonly install under `C:\Users\<you>\AppData\Local\Programs\Budget App\`, unless a different install location was chosen.
+   - macOS builds are usually removed by deleting `Budget App.app` from `/Applications` or the folder where it was copied.
+
+Deleting the `data/` folder is destructive. Export any CSVs you want to keep before removing it.
+
 ## How The Application Works
 
 ### Sign-in and recovery flow
@@ -276,16 +329,20 @@ This separation is important:
 - Selecting a budget calls `CacheService.setBudgetContext(userId, budgetId)`
 - That activates the correct NeDB files for the current budget session
 
-### Accounts, categories, and transactions
+### Accounts, debt, categories, and transactions
 
 - Accounts hold balances and determine whether dollars are on budget
 - Account type is tracked separately from budget treatment
+- Credit card and loan account types are treated as debt by starting from a negative balance
+- Debt account balances can move above zero if transactions or transfers overpay the debt
+- The top summary shows net worth, calculated from active account balances rather than cash-only totals
 - Categories and subcategories organize planned spending and savings
 - Savings buckets are budget rows, not separate storage accounts
 - Transactions are categorized to produce activity
 - Transfers create linked movements between two accounts and avoid counting the transfer as ordinary spending
 - Transactions support CSV import/export and a `cleared` flag for reconciliation
 - Budget cards, account cards, and category cards can be manually reordered with drag-and-drop
+- Transaction and transfer edit rows support Ctrl+K on Windows or Cmd+K on macOS as a save shortcut
 
 ### Monthly budgeting
 
@@ -313,6 +370,30 @@ Savings buckets are intentionally simple:
 - spending from the bucket reduces it through normal negative activity
 - a savings bucket may exist at the category level or subcategory level
 
+### Debt planning
+
+The Debt tab is a planning tool, not a transaction generator.
+
+It supports two modes:
+
+- Payoff existing debt:
+  - select an existing credit card or loan account
+  - pull the current debt balance from that account
+  - model payment amount, extra payment, payoff date, interest, and total paid
+- Calculate new loan:
+  - enter loan amount and down payment
+  - model a new payment schedule before the account exists in the ledger
+
+The calculator separates rate assumptions:
+
+- `Rate Type`: APR / nominal annual rate or APY / effective annual rate
+- `Interest Compounds`: annually, semi-annually, quarterly, monthly, daily, or continuously
+- `Payments Made`: monthly, semi-monthly, biweekly, or weekly
+
+The planner converts those assumptions into an effective payment-period rate, then renders summary cards and an amortization table. The table is sorted by date by default and supports cycling each column through ascending, descending, and unsorted states.
+
+Debt planner projections do not mutate accounts, transactions, or transfers. A future enhancement could persist scenarios or create scheduled payments, but the current version is intentionally inspect-only.
+
 ### Reports
 
 The reports screen derives analytics from transactions and saved allocations. Current reports include:
@@ -339,6 +420,11 @@ The current app supports CSV import/export in these areas:
   - export
 - Budget:
   - export of the visible budget months
+
+## Keyboard Shortcuts
+
+- Transactions: Ctrl+K on Windows or Cmd+K on macOS saves the active transaction edit row
+- Transfers: Ctrl+K on Windows or Cmd+K on macOS saves the active transfer edit row
 
 ## Developer Notes
 
@@ -369,6 +455,7 @@ The renderer uses plain JavaScript state objects instead of a formal store. Exam
 - transaction table sort/filter state
 - transfer table sort/filter state
 - budget draft state
+- debt calculator mode, assumptions, and amortization sort state
 - reports month selection
 - sidebar collapsed state
 
@@ -413,9 +500,10 @@ Tradeoffs:
 If this app grows further, good refactor targets would be:
 
 - extracting budgeting calculations into dedicated utility modules
+- extracting loan/debt calculator math into a dedicated utility module
 - extracting transaction and transfer table logic into smaller files
 - moving reusable formatting/filter helpers into separate modules
-- adding tests around budgeting math and auth/recovery flows
+- adding tests around budgeting math, debt projection math, and auth/recovery flows
 
 ## Known Constraints
 
