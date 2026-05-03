@@ -17,10 +17,34 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-color: rgba(22, 51, 49, 0.28) transparent;
+  scrollbar-width: thin;
 }
 
 html, body {
   min-height: 100%;
+}
+
+*::-webkit-scrollbar {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  min-height: 2.5rem;
+  border: 0.12rem solid transparent;
+  border-radius: 999px;
+  background: rgba(22, 51, 49, 0.26);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(22, 51, 49, 0.4);
+  background-clip: padding-box;
 }
 
 body {
@@ -1011,32 +1035,110 @@ h3 {
 }
 
 @media (min-width: 1081px) {
+  .app-shell[data-active-section="accounts"],
+  .app-shell[data-active-section="categories"],
+  .app-shell[data-active-section="debt"],
   .app-shell[data-active-section="transactions"],
   .app-shell[data-active-section="transfers"] {
     height: 100vh;
     min-height: 0;
-    overflow: hidden;
   }
 
+  .app-shell[data-active-section="accounts"] .sidebar,
+  .app-shell[data-active-section="categories"] .sidebar,
+  .app-shell[data-active-section="debt"] .sidebar,
+  .app-shell[data-active-section="accounts"] .main-panel,
+  .app-shell[data-active-section="categories"] .main-panel,
+  .app-shell[data-active-section="debt"] .main-panel,
   .app-shell[data-active-section="transactions"] .sidebar,
   .app-shell[data-active-section="transfers"] .sidebar,
   .app-shell[data-active-section="transactions"] .main-panel,
   .app-shell[data-active-section="transfers"] .main-panel {
     min-height: 0;
-    overflow: hidden;
   }
 
+  .app-shell[data-active-section="accounts"] .main-panel,
+  .app-shell[data-active-section="categories"] .main-panel,
+  .app-shell[data-active-section="debt"] .main-panel,
   .app-shell[data-active-section="transactions"] .main-panel,
   .app-shell[data-active-section="transfers"] .main-panel {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
   }
 
+  .app-shell[data-active-section="accounts"] #accounts,
+  .app-shell[data-active-section="categories"] #categories,
+  .app-shell[data-active-section="debt"] #debt,
   .app-shell[data-active-section="transactions"] #transactions,
   .app-shell[data-active-section="transfers"] #transfers {
     height: 100%;
     min-height: 0;
-    overflow: hidden;
+  }
+
+  .app-shell[data-active-section="accounts"] #accounts .section-grid,
+  .app-shell[data-active-section="categories"] #categories .section-grid {
+    height: 100%;
+    min-height: 0;
+    align-items: stretch;
+  }
+
+  .app-shell[data-active-section="accounts"] #accounts .panel,
+  .app-shell[data-active-section="categories"] #categories .panel {
+    min-height: 0;
+  }
+
+  .app-shell[data-active-section="accounts"] #accounts .form-panel,
+  .app-shell[data-active-section="categories"] #categories .form-panel,
+  .app-shell[data-active-section="accounts"] #accounts .list-panel,
+  .app-shell[data-active-section="categories"] #categories .list-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    max-height: 100%;
+  }
+
+  .app-shell[data-active-section="accounts"] #account-form,
+  .app-shell[data-active-section="categories"] #category-form,
+  .app-shell[data-active-section="accounts"] #accounts-list,
+  .app-shell[data-active-section="categories"] #categories-list {
+    align-content: start;
+    min-height: 0;
+    overflow: auto;
+    padding-right: 0.25rem;
+  }
+
+  .app-shell[data-active-section="debt"] #debt .single-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100%;
+    max-height: none;
+    min-height: 0;
+  }
+
+  .app-shell[data-active-section="debt"] .debt-workspace,
+  .app-shell[data-active-section="debt"] .debt-layout {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .app-shell[data-active-section="debt"] .debt-layout {
+    align-items: stretch;
+  }
+
+  .app-shell[data-active-section="debt"] .debt-calculator-form {
+    align-content: start;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .app-shell[data-active-section="debt"] .debt-results {
+    align-content: start;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .app-shell[data-active-section="debt"] .debt-amortization-shell {
+    max-height: none;
+    min-height: 0;
   }
 
   .app-shell[data-active-section="transactions"] #transactions .single-panel,
@@ -2445,13 +2547,14 @@ select.txn-input {
   gap: 0.65rem;
   padding: 0.65rem 0;
   max-height: 500px;
-  overflow: hidden;
+  overflow: visible;
   transition: max-height 200ms ease, opacity 200ms ease;
   opacity: 1;
 }
 
 .debt-advanced-settings.collapsed {
   max-height: 0;
+  overflow: hidden;
   padding: 0;
   opacity: 0;
   pointer-events: none;
@@ -3291,11 +3394,6 @@ select.txn-input {
 
   .half-width-field {
     width: 100%;
-  }
-
-  .transaction-table,
-  .transfer-table {
-    overflow-x: auto;
   }
 
   .transaction-row {

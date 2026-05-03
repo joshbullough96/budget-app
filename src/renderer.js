@@ -5741,8 +5741,20 @@ async function loadDebtPlanner() {
             <span>Current Balance</span>
             <input type="number" id="debt-principal" min="0" step="0.01" value="${escapeHtml(formatDecimalInputValue(principal))}" placeholder="0.00">
           </label>
+          <label>
+            <span>Interest Rate %</span>
+            <input type="number" id="debt-rate" min="0" step="0.001" value="6.5" placeholder="0.00">
+          </label>
         </div>
   `;
+  const rateFieldHtml = isNewLoanMode ? `
+        <div class="form-row">
+          <label>
+            <span>Interest Rate %</span>
+            <input type="number" id="debt-rate" min="0" step="0.001" value="6.5" placeholder="0.00">
+          </label>
+        </div>
+  ` : '';
 
   view.innerHTML = `
     <div class="debt-layout">
@@ -5765,12 +5777,7 @@ async function loadDebtPlanner() {
         </label>
         `}
         ${principalFieldsHtml}
-        <div class="form-row">
-          <label>
-            <span>Interest Rate %</span>
-            <input type="number" id="debt-rate" min="0" step="0.001" value="6.5" placeholder="0.00">
-          </label>
-        </div>
+        ${rateFieldHtml}
         <hr class="form-divider">
         <div class="debt-advanced-settings-header">
           <button type="button" class="collapse-toggle debt-settings-toggle ${isAdvancedDebtSettingsExpanded ? 'expanded' : ''}" onclick="toggleAdvancedDebtSettings()" aria-label="Toggle advanced settings" aria-expanded="${isAdvancedDebtSettingsExpanded}" title="Toggle advanced settings">
