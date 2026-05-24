@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build:win": "electron-builder --win nsis",
+    "build:win": "electron-builder --win nsis --publish never",
     "pack:win": "electron-builder --win dir"
   },
   "keywords": [

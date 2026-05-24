@@ -3,6 +3,7 @@ const CacheService = require('./services/CacheService');
 const ProfileService = require('./services/ProfileService');
 const Sortable = require('sortablejs');
 const Swal = require('sweetalert2');
+const { clipboard, ipcRenderer } = require('electron');
 const Account = require('./models/Account');
 const Category = require('./models/Category');
 const SubCategory = require('./models/SubCategory');
@@ -202,6 +203,10 @@ const sectionCopy = {
   reports: {
     title: 'Reports',
     subtitle: 'See cashflow, budget performance, and category mix over time.'
+  },
+  settings: {
+    title: 'Settings',
+    subtitle: 'See where your local budget data lives and what to back up.'
   }
 };
 
@@ -931,6 +936,9 @@ async function loadSectionData(sectionId) {
       break;
     case 'reports':
       await loadReports();
+      break;
+    case 'settings':
+      renderSettings();
       break;
   }
 }
@@ -2498,6 +2506,111 @@ async function loadBudgetView(options = {}) {
 
   renderBudgetWorkspace();
   syncBudgetDirtyStatus();
+}
+
+function getSettingsStorageLocations() {
+  if (!hasActiveBudgetSession()) {
+    return [];
+  }
+
+  const userId = sessionState.activeUser.id;
+  const budgetId = sessionState.activeBudget.id;
+  const appSupportDirectory = ipcRenderer.sendSync('app:get-user-data-path');
+
+  return [
+    {
+      label: 'Budget App support folder',
+      value: appSupportDirectory,
+      detail: 'Contains all local files connected to this app on this computer, including saved budget data and other app support files.'
+    },
+    {
+      label: 'Budget App data folder',
+      value: profileService.rootDataDirectory,
+      detail: 'Back up this folder to include every local profile and every budget saved in this app.'
+    },
+    {
+      label: 'Current profile folder',
+      value: profileService.getUserDirectory(userId),
+      detail: `Stores the local profile for ${sessionState.activeUser.name} and that profile's budgets.`
+    },
+    {
+      label: 'Current budget folder',
+      value: profileService.getBudgetDirectory(userId, budgetId),
+      detail: `Stores the database files for ${sessionState.activeBudget.name}.`
+    }
+  ];
+}
+
+function renderSettingsPathCard(location) {
+  return `
+    <article class="settings-path-card">
+      <div class="settings-path-copy">
+        <p class="hero-label">${escapeHtml(location.label)}</p>
+        <code>${escapeHtml(location.value)}</code>
+        <p>${escapeHtml(location.detail)}</p>
+      </div>
+      <button
+        type="button"
+        class="secondary-button compact-button settings-copy-button"
+        data-copy-path="${escapeHtml(location.value)}"
+      >
+        Copy Path
+      </button>
+    </article>
+  `;
+}
+
+function renderSettings() {
+  const settingsView = document.getElementById('settings-view');
+
+  if (!settingsView || !hasActiveBudgetSession()) {
+    return;
+  }
+
+  const storageLocations = getSettingsStorageLocations();
+  const appSupportLocation = storageLocations[0];
+  const databaseFiles = ['accounts', 'categories', 'subCategories', 'transactions', 'transfers', 'budgetAllocations'];
+
+  settingsView.innerHTML = `
+    <div class="settings-callout">
+      <strong>Your budget data is stored locally on this computer.</strong>
+      <p>This app does not automatically sync or back up your data. Back up the local data folder manually before replacing this computer, factory resetting it, reinstalling the operating system, or clearing app data.</p>
+    </div>
+
+    <div class="settings-path-list">
+      ${storageLocations.map(renderSettingsPathCard).join('')}
+    </div>
+
+    <article class="settings-instruction-card">
+      <div>
+        <p class="hero-label">Complete uninstall</p>
+        <h4>Remove all Budget App files from this computer</h4>
+        <p class="panel-hint">Uninstalling the app may leave local data and app support files behind so your information is not removed accidentally.</p>
+      </div>
+      <ol class="settings-step-list">
+        <li>Back up anything you may want to keep.</li>
+        <li>Uninstall Budget App from your computer.</li>
+        <li>Delete the Budget App support folder shown below.</li>
+        <li>Empty the Trash or Recycle Bin if you want the files fully removed.</li>
+      </ol>
+      <div class="settings-warning">
+        <strong>This is permanent.</strong>
+        <p>Deleting this folder removes every local Budget App profile, budget, transaction, account, category, saved allocation, and other local support file on this computer.</p>
+      </div>
+      <code>${escapeHtml(appSupportLocation.value)}</code>
+    </article>
+
+    <article class="settings-file-card">
+      <div>
+        <p class="hero-label">Current budget database files</p>
+        <h4>Files saved inside the current budget folder</h4>
+        <p class="panel-hint">These files hold accounts, categories, transactions, transfers, and monthly budget allocations for the active budget.</p>
+      </div>
+      <ul class="settings-file-list">
+        ${databaseFiles.map(collection => `<li><code>${escapeHtml(cache.getCollectionPath(collection))}</code></li>`).join('')}
+      </ul>
+    </article>
+  `;
 }
 
 function updateSectionHeader(sectionId) {
@@ -6618,6 +6731,10 @@ window.onload = () => {
   document.getElementById('manager-switch-budget').addEventListener('click', async () => {
     await switchBudgets();
   });
+  document.getElementById('app-settings').addEventListener('click', event => {
+    event.target.closest('.user-menu')?.removeAttribute('open');
+    showSection('settings');
+  });
   document.getElementById('app-switch-budget').addEventListener('click', async () => {
     await switchBudgets();
   });
@@ -6632,6 +6749,16 @@ window.onload = () => {
   });
   window.addEventListener('resize', () => {
     setSidebarCollapsed(readSidebarCollapsedPreference());
+  });
+  document.getElementById('settings-view').addEventListener('click', event => {
+    const copyButton = event.target.closest('[data-copy-path]');
+
+    if (!copyButton) {
+      return;
+    }
+
+    clipboard.writeText(copyButton.dataset.copyPath);
+    setStatus('Copied the folder path.');
   });
   document.addEventListener('click', event => {
     document.querySelectorAll('.user-menu[open]').forEach(menu => {
