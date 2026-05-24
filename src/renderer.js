@@ -3,7 +3,8 @@ const CacheService = require('./services/CacheService');
 const ProfileService = require('./services/ProfileService');
 const Sortable = require('sortablejs');
 const Swal = require('sweetalert2');
-const { clipboard, ipcRenderer } = require('electron');
+const { ipcRenderer } = require('electron');
+const path = require('path');
 const Account = require('./models/Account');
 const Category = require('./models/Category');
 const SubCategory = require('./models/SubCategory');
@@ -2549,15 +2550,24 @@ function renderSettingsPathCard(location) {
         <code>${escapeHtml(location.value)}</code>
         <p>${escapeHtml(location.detail)}</p>
       </div>
-      <button
-        type="button"
-        class="secondary-button compact-button settings-copy-button"
-        data-copy-path="${escapeHtml(location.value)}"
-      >
-        Copy Path
-      </button>
     </article>
   `;
+}
+
+function getOptionalUninstallCleanupLocations() {
+  if (process.platform !== 'win32' || !process.env.LOCALAPPDATA) {
+    return [];
+  }
+
+  const updaterCacheDirectory = path.join(process.env.LOCALAPPDATA, 'budget-app-updater');
+
+  return [
+    {
+      label: 'Optional Windows installer cache folder',
+      value: updaterCacheDirectory,
+      detail: 'This folder may exist after installing Budget App on Windows. Delete it after you uninstall if it is present.'
+    }
+  ];
 }
 
 function renderSettings() {
@@ -2569,6 +2579,7 @@ function renderSettings() {
 
   const storageLocations = getSettingsStorageLocations();
   const appSupportLocation = storageLocations[0];
+  const optionalCleanupLocations = getOptionalUninstallCleanupLocations();
   const databaseFiles = ['accounts', 'categories', 'subCategories', 'transactions', 'transfers', 'budgetAllocations'];
 
   settingsView.innerHTML = `
@@ -2591,6 +2602,7 @@ function renderSettings() {
         <li>Back up anything you may want to keep.</li>
         <li>Uninstall Budget App from your computer.</li>
         <li>Delete the Budget App support folder shown below.</li>
+        ${optionalCleanupLocations.length ? '<li>On Windows, delete the optional installer cache folder shown below if it exists.</li>' : ''}
         <li>Empty the Trash or Recycle Bin if you want the files fully removed.</li>
       </ol>
       <div class="settings-warning">
@@ -2598,6 +2610,11 @@ function renderSettings() {
         <p>Deleting this folder removes every local Budget App profile, budget, transaction, account, category, saved allocation, and other local support file on this computer.</p>
       </div>
       <code>${escapeHtml(appSupportLocation.value)}</code>
+      ${optionalCleanupLocations.length ? `
+        <div class="settings-optional-cleanup-list">
+          ${optionalCleanupLocations.map(renderSettingsPathCard).join('')}
+        </div>
+      ` : ''}
     </article>
 
     <article class="settings-file-card">
@@ -6749,16 +6766,6 @@ window.onload = () => {
   });
   window.addEventListener('resize', () => {
     setSidebarCollapsed(readSidebarCollapsedPreference());
-  });
-  document.getElementById('settings-view').addEventListener('click', event => {
-    const copyButton = event.target.closest('[data-copy-path]');
-
-    if (!copyButton) {
-      return;
-    }
-
-    clipboard.writeText(copyButton.dataset.copyPath);
-    setStatus('Copied the folder path.');
   });
   document.addEventListener('click', event => {
     document.querySelectorAll('.user-menu[open]').forEach(menu => {

@@ -2862,11 +2862,6 @@ select.txn-input {
   background: rgba(255, 253, 248, 0.92);
 }
 
-.settings-path-card {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-}
-
 .settings-path-copy {
   display: grid;
   gap: 0.35rem;
@@ -2900,10 +2895,6 @@ select.txn-input {
   font-family: Consolas, "Courier New", monospace;
   font-size: 0.82rem;
   line-height: 1.35;
-}
-
-.settings-copy-button {
-  white-space: nowrap;
 }
 
 .settings-file-card {
@@ -2941,6 +2932,15 @@ select.txn-input {
 .settings-warning strong,
 .settings-warning p {
   margin: 0;
+}
+
+.settings-optional-cleanup-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.settings-optional-cleanup-list .settings-path-card {
+  background: rgba(255, 246, 236, 0.62);
 }
 
 .settings-file-list {
@@ -3507,15 +3507,6 @@ select.txn-input {
 
   .topbar-session {
     min-width: 0;
-    width: 100%;
-  }
-
-  .settings-path-card {
-    grid-template-columns: 1fr;
-    align-items: stretch;
-  }
-
-  .settings-copy-button {
     width: 100%;
   }
 
