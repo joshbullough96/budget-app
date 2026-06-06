@@ -110,11 +110,13 @@ jobs:
         with:
           path: release-artifacts
 
-      - name: Prepare release downloads
+      - name: Package release downloads
         run: |
           mkdir -p release-packages
-          cp release-artifacts/windows-release/*.exe release-packages/
-          cp release-artifacts/mac-release/*.dmg release-packages/
+          cd release-artifacts/windows-release
+          zip -r "../../release-packages/Budget-App-Windows.zip" .
+          cd ../mac-release
+          zip -r "../../release-packages/Budget-App-Mac.zip" .
 
       - name: Create or update release
         env:
