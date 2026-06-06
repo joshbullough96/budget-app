@@ -7,7 +7,8 @@
     "start": "electron .",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build:win": "electron-builder --win nsis",
-    "pack:win": "electron-builder --win dir"
+    "pack:win": "electron-builder --win dir",
+    "build:mac": "electron-builder --mac dmg --universal"
   },
   "keywords": [
     "budget",
@@ -39,7 +40,7 @@
     },
     "mac": {
       "icon": "build/icon.icns",
-      "artifactName": "${productName}.${ext}",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
       "target": [
         "dmg"
       ],
