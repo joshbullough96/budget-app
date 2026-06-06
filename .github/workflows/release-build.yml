@@ -54,7 +54,7 @@ jobs:
             dist/latest.yml
 
   build-mac:
-    name: Build Mac DMG
+    name: Build Universal Mac DMG
     runs-on: macos-latest
 
     env:
@@ -73,8 +73,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Mac disk image
-        run: npx electron-builder --mac dmg --config.npmRebuild=false --publish never
+      - name: Build universal Mac disk image
+        run: npm run build:mac -- --config.npmRebuild=false --publish never
+
+      - name: Verify Intel and Apple Silicon support
+        run: |
+          APP_BINARY="dist/mac-universal/Budget App.app/Contents/MacOS/Budget App"
+          ARCHITECTURES="$(lipo -archs "$APP_BINARY")"
+          echo "Mac executable architectures: $ARCHITECTURES"
+          [[ "$ARCHITECTURES" == *"x86_64"* ]]
+          [[ "$ARCHITECTURES" == *"arm64"* ]]
 
       - name: Upload Mac artifacts
         uses: actions/upload-artifact@v4
@@ -102,13 +110,11 @@ jobs:
         with:
           path: release-artifacts
 
-      - name: Package release downloads
+      - name: Prepare release downloads
         run: |
           mkdir -p release-packages
-          cd release-artifacts/windows-release
-          zip -r "../../release-packages/Budget-App-Windows.zip" .
-          cd ../mac-release
-          zip -r "../../release-packages/Budget-App-Mac.zip" .
+          cp release-artifacts/windows-release/*.exe release-packages/
+          cp release-artifacts/mac-release/*.dmg release-packages/
 
       - name: Create or update release
         env:

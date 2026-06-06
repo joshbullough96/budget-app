@@ -128,6 +128,16 @@ npx electron-builder
 
 By default, packaged output is written to `dist/`.
 
+Platform-specific release commands:
+
+```bash
+npm run build:win
+npm run build:mac
+```
+
+The Mac command must run on macOS. It creates a universal DMG that supports both
+Intel and Apple Silicon Macs.
+
 ## Project Structure
 
 ```text
