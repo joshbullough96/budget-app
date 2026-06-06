@@ -8,7 +8,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build:win": "electron-builder --win nsis",
     "pack:win": "electron-builder --win dir",
-    "build:mac": "electron-builder --mac"
+    "build:mac": "electron-builder --mac dmg --universal"
   },
   "keywords": [
     "budget",
